@@ -177,13 +177,6 @@ options:
     description: |
       Default multicast port number that will be used to communicate between HA
       Cluster nodes.
-  lp1366997-workaround:
-    type: boolean
-    default: False
-    description: |
-      Adds two config options (wsrep_drupal_282555_workaround and
-      wsrep_retry_autocommit) as a workaround for Percona Primary Key bug (see
-      LP 1366997). Only required for Trusty.
   enable-binlogs:
     type: boolean
     default: False

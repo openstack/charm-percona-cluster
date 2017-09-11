@@ -198,7 +198,6 @@ def render_config(hosts=None):
         'sst_password': sst_password(),
         'innodb_file_per_table': config('innodb-file-per-table'),
         'table_open_cache': config('table-open-cache'),
-        'lp1366997_workaround': config('lp1366997-workaround'),
         'binlogs_path': config('binlogs-path'),
         'enable_binlogs': config('enable-binlogs'),
         'binlogs_max_size': config('binlogs-max-size'),
