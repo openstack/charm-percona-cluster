@@ -807,7 +807,11 @@ def leader_settings_changed():
 @hooks.hook('leader-elected')
 def leader_elected():
     '''Set the leader nodes IP'''
-    leader_set(**{'leader-ip': get_relation_ip('cluster')})
+    if is_leader():
+        leader_set(**{'leader-ip': get_relation_ip('cluster')})
+    else:
+        log('leader-elected hook executed, but this unit is not the leader',
+            level=INFO)
 
 
 @hooks.hook('nrpe-external-master-relation-joined',
