@@ -1,5 +1,4 @@
-Overview
-========
+# Overview
 
 Percona XtraDB Cluster is a high availability and high scalability solution for
 MySQL clustering. Percona XtraDB Cluster integrates Percona Server with the
@@ -8,11 +7,9 @@ which enables you to create a cost-effective MySQL cluster.
 
 This charm deploys Percona XtraDB Cluster onto Ubuntu.
 
-Usage
-=====
+# Usage
 
-Deployment
-----------
+## Deployment
 
 To deploy this charm:
 
@@ -35,8 +32,7 @@ The root password for mysql can be retrieved using the following command:
 This is only usable from within one of the units within the deployment
 (access to root is restricted to localhost only).
 
-Memory Configuration
--------------------
+## Memory Configuration
 
 Percona Cluster is extremely memory sensitive. Setting memory values too low
 will give poor performance. Setting them too high will create problems that are
@@ -76,8 +72,7 @@ requirements and resources available.
 [2] http://www.mysqlcalculator.com/
 
 
-HA/Clustering
--------------
+## HA/Clustering
 
 When more than one unit of the charm is deployed with the hacluster charm
 the percona charm will bring up an Active/Active cluster. The process of
@@ -129,8 +124,7 @@ If both 'vip' and 'dns-ha' are set, as they are mutually exclusive
 If 'dns-ha' is set and 'os-access-hostname' is not set
 If the 'access' binding is not set and 'dns-ha' is set, consumers of the db may not be allowed to connect
 
-Network Space support
----------------------
+## Network Space support
 
 This charm supports the use of Juju Network Spaces, allowing the charm to be bound
 to network space configurations managed directly by Juju.  This is only supported
@@ -159,10 +153,77 @@ MySQL databases services from other charms.
 
 **NOTE:** Existing deployments using the access-network configuration option will continue to function; this option is preferred over any network space binding provided for the 'shared-db' relation if set.
 
-Limitations
-============
+# Limitations
 
 Note that Percona XtraDB Cluster is not a 'scale-out' MySQL solution; reads
 and writes are channelled through a single service unit and synchronously
 replicated to other nodes in the cluster; reads/writes are as slow as the
 slowest node you have in your deployment.
+
+# Series Upgrade
+
+## Procedure
+
+1. Take a backup of all the databases
+
+```sh
+juju run-action mysql/N backup
+```
+ * Get that backup off the mysql/N unit and somehwere safe.
+```sh
+juju scp -- -r mysql/N:/opt/backups/mysql /path/to/local/backup/dir
+```
+
+2. Pause all non-leader units and corresponding hacluster units.
+The leader node will remain up for the time being. This is to ensure the leader has the latest sequence number and will be considered the most up to date by the cluster.
+```sh
+juju run-action hacluster/N pause
+juju run-action percona-cluster/N pause
+```
+
+3. Prepare the leader node
+```sh
+juju upgrade-series prepare $MACHINE_NUMBER $SERIES
+```
+
+4. Administratively perform the upgrade.
+* do-release-upgrade plus any further steps administratively required steps for an upgrade.
+
+5. Reboot
+
+6. Complete the series upgrade on the leader:
+```sh
+juju upgrade-series complete $MACHINE_NUMBER
+```
+
+7. Administratively validate the leader node database is up and running
+* Connect to the database and check for expected data
+* Review "SHOW GLOBAL STATUS;"
+
+
+8. Upgrade the non-leader nodes one at a time following the same pattern summarized bellow:
+
+* juju upgrade-series prepare $MACHINE_NUMBER $SERIES
+* Administratively Upgrade
+* Reboot
+* juju upgrade-series complete $MACHINE_NUMBER
+* Validate
+
+9. Finalize the upgrade
+Run action on leader node.
+This action informs each node of the cluster the upgrade process is complete cluster wide.
+This also updates mysql configuration with all peers in the cluster.
+```sh
+juju run-action mysql/N complete-cluster-series-upgrade
+```
+
+10. Set future instance to the new series and set the source origin
+```sh
+juju set-series percona-cluster xenial
+juju config mysql source=distro
+```
+
+## Documentation
+* https://www.percona.com/doc/percona-xtradb-cluster/LATEST/howtos/upgrade_guide.html
+* https://www.percona.com/doc/percona-xtradb-cluster/5.6/upgrading_guide_55_56.html
+* https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/

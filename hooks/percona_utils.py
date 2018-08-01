@@ -7,6 +7,7 @@ import os
 import shutil
 import uuid
 from functools import partial
+import time
 
 from charmhelpers.core.decorators import retry_on_exception
 from charmhelpers.core.host import (
@@ -63,6 +64,7 @@ from charmhelpers.contrib.openstack.utils import (
     pause_unit,
     resume_unit,
     is_unit_paused_set,
+    is_unit_upgrading_set,
 )
 
 # NOTE: python-mysqldb is installed by charmhelpers.contrib.database.mysql so
@@ -664,6 +666,9 @@ def charm_check_func():
 
     @returns (status, message) - tuple of strings if an issue
     """
+    if is_unit_upgrading_set():
+        # Avoid looping through attempting to determine cluster_in_sync
+        return ("blocked", "Unit upgrading.")
 
     @retry_on_exception(num_retries=10,
                         base_delay=2,
@@ -1095,3 +1100,26 @@ def set_ready_on_peers():
     """
     for relid in relation_ids('cluster'):
         relation_set(relation_id=relid, ready=True)
+
+
+def check_for_socket(file_name, exists=True, sleep=10, attempts=12):
+    """Check that a socket file exists or does not exist.
+
+    :file_name: str File name
+    :exits: bool Check for file exists or not
+    :sleep: int Sleep time between attempts
+    :attempts: int Number of attempt before throwing an exception
+    :returns: boolean
+    :raises: Exception if max attmepts is reached
+    """
+    for i in range(attempts):
+        if os.path.exists(file_name) == exists:
+            return
+        else:
+            log("{} file is not yet ihe correct state retrying. "
+                "Check for exists={}".format(file_name, exists),
+                DEBUG)
+            time.sleep(sleep)
+    # If we get here throw an exception
+    raise Exception("Socket {} not found after {} attempts."
+                    .format(file_name, attempts))

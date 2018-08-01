@@ -12,6 +12,8 @@ from charmhelpers.core.hookenv import (
     action_get,
     action_set,
     action_fail,
+    leader_set,
+    is_leader,
 )
 
 from charmhelpers.core.host import (
@@ -44,6 +46,20 @@ def resume(args):
     resume_unit_helper(register_configs())
     # NOTE(ajkavanagh) - we force a config_changed pseudo-hook to see if the
     # unit needs to bootstrap or restart it's services here.
+    config_changed()
+
+
+def complete_cluster_series_upgrade(args):
+    """ Complete the series upgrade process
+
+    After all nodes have been upgraded, this action is run to inform the whole
+    cluster the upgrade is done. Config files will be re-rendered with each
+    peer in the wsrep_cluster_address config.
+    """
+    if is_leader():
+        # Unset cluster_series_upgrading
+        leader_set(cluster_series_upgrading="")
+        leader_set(cluster_series_upgrade_leader="")
     config_changed()
 
 
@@ -87,9 +103,11 @@ def backup(args):
         action_fail("innobackupex failed, you should log on to the unit"
                     "and check the status of the database")
 
+
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
-ACTIONS = {"pause": pause, "resume": resume, "backup": backup}
+ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
+           "complete-cluster-series-upgrade": complete_cluster_series_upgrade}
 
 
 def main(args):

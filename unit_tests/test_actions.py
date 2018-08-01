@@ -45,6 +45,28 @@ class ResumeTestCase(CharmTestCase):
             config_changed.assert_called_once_with()
 
 
+class CompleteClusterSeriesUpgrade(CharmTestCase):
+
+    def setUp(self):
+        super(CompleteClusterSeriesUpgrade, self).setUp(
+            actions, ["config_changed", "is_leader", "leader_set"])
+
+    def test_leader_complete_series_upgrade(self):
+        self.is_leader.return_value = True
+
+        calls = [mock.call(cluster_series_upgrading=""),
+                 mock.call(cluster_series_upgrade_leader="")]
+        actions.complete_cluster_series_upgrade([])
+        self.leader_set.assert_has_calls(calls)
+        self.config_changed.assert_called_once_with()
+
+    def test_non_leader_complete_series_upgrade(self):
+        self.is_leader.return_value = False
+        actions.complete_cluster_series_upgrade([])
+        self.leader_set.assert_not_called()
+        self.config_changed.assert_called_once_with()
+
+
 class MainTestCase(CharmTestCase):
 
     def setUp(self):

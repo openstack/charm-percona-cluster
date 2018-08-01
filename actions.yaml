@@ -17,4 +17,10 @@ backup:
       type: boolean
       default: false
       description: Make an incremental database backup
-
+complete-cluster-series-upgrade:
+  description: |
+    Perform final operations post series upgrade. Inform all nodes in the
+    cluster the upgrade is complete cluster wide. Update configuration with all
+    peers for wsrep replication.
+    This action should be performed on the current leader. Note the leader may
+    have changed during the series upgrade process.
