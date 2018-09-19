@@ -310,20 +310,28 @@ class TestConfigChanged(CharmTestCase):
         'get_cluster_hosts',
         'leader_get',
         'set_ready_on_peers',
+        'is_unit_paused_set',
+        'is_unit_upgrading_set',
     ]
 
     def setUp(self):
         CharmTestCase.setUp(self, hooks, self.TO_PATCH)
         self.config.side_effect = self.test_config.get
         self.is_unit_paused_set.return_value = False
+        self.is_unit_upgrading_set.return_value = False
         self.is_leader.return_value = False
         self.is_leader_bootstrapped.return_value = False
         self.is_bootstrapped.return_value = False
         self.clustered_once.return_value = False
         self.relation_ids.return_value = []
         self.is_relation_made.return_value = False
-        self.leader_get.return_value = '10.10.10.10'
         self.get_cluster_hosts.return_value = []
+
+        def _leader_get(key):
+            settings = {'leader-ip': '10.10.10.10',
+                        'cluster_series_upgrading': False}
+            return settings.get(key)
+        self.leader_get.side_effect = _leader_get
 
     def test_config_changed_open_port(self):
         '''Ensure open_port is called with MySQL default port'''

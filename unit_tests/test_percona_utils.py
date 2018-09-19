@@ -377,6 +377,33 @@ class UtilsTests(CharmTestCase):
         self.config.side_effect = lambda key: _config.get(key)
         self.assertEqual(percona_utils.get_min_cluster_size(), 3)
 
+    @mock.patch("percona_utils.time")
+    @mock.patch("percona_utils.os")
+    def test_check_for_socket(self, _os, _time):
+        # Socket exists checking for exists
+        _os.path.exists.return_value = True
+        percona_utils.check_for_socket("filename", exists=True)
+        _time.sleep.assert_not_called()
+
+        # Socket does not exist checking for exists
+        _os.path.exists.return_value = False
+        with self.assertRaises(Exception):
+            percona_utils.check_for_socket("filename", exists=True)
+        _time.sleep.assert_called_with(10)
+
+        _time.reset_mock()
+
+        # Socket does not exist checking for not exists
+        _os.path.exists.return_value = False
+        percona_utils.check_for_socket("filename", exists=False)
+        _time.sleep.assert_not_called()
+
+        # Socket exists checking for not exists
+        _os.path.exists.return_value = True
+        with self.assertRaises(Exception):
+            percona_utils.check_for_socket("filename", exists=False)
+        _time.sleep.assert_called_with(10)
+
 
 class UtilsTestsStatus(CharmTestCase):
 
