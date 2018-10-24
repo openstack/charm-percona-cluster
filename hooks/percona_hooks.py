@@ -231,6 +231,9 @@ def render_config(hosts=None):
     if wsrep_provider_options:
         context['wsrep_provider_options'] = wsrep_provider_options
 
+    if config('wsrep-slave-threads') is not None:
+        context['wsrep_slave_threads'] = config('wsrep-slave-threads')
+
     if CompareHostReleases(lsb_release()['DISTRIB_CODENAME']) < 'bionic':
         # myisam_recover is not valid for PXC 5.7 (introduced in Bionic) so we
         # only set it for PXC 5.6.

@@ -1068,6 +1068,9 @@ def get_wsrep_provider_options():
 
     if config('prefer-ipv6'):
         wsrep_provider_options.append('gmcast.listen_addr=tcp://:::4567')
+    if config('gcs-fc-limit') is not None:
+        wsrep_provider_options.append(
+            'gcs.fc_limit={}'.format(config('gcs-fc-limit')))
 
     peer_timeout = config('peer-timeout')
     if peer_timeout and(not peer_timeout.startswith('PT') or

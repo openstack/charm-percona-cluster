@@ -73,7 +73,9 @@ class BasicDeployment(OpenStackAmuletDeployment):
         """Configure all of the services."""
         cfg_percona = {'min-cluster-size': self.units,
                        'vip': self.vip,
-                       'root-password': PXC_ROOT_PASSWD}
+                       'root-password': PXC_ROOT_PASSWD,
+                       'wsrep-slave-threads': 2,
+                       'gcs-fc-limit': 32}
 
         cfg_ha = {'debug': True,
                   'corosync_key': ('xZP7GDWV0e8Qs0GxWThXirNNYlScgi3sRTdZk/IXKD'
