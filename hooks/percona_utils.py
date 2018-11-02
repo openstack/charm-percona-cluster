@@ -405,10 +405,15 @@ def assert_charm_supports_ipv6():
                         "versions less than Trusty 14.04")
 
 
+def _cmp(x, y):
+    """Shim for py2 py3 compat."""
+    return (x > y) - (x < y)
+
+
 def unit_sorted(units):
     """Return a sorted list of unit names."""
     return sorted(
-        units, lambda a, b: cmp(int(a.split('/')[-1]), int(b.split('/')[-1])))
+        units, lambda a, b: _cmp(int(a.split('/')[-1]), int(b.split('/')[-1])))
 
 
 def install_mysql_ocf():
