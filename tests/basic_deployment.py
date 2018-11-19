@@ -20,7 +20,7 @@ class BasicDeployment(OpenStackAmuletDeployment):
     utils = AmuletUtils()
 
     def __init__(self, vip=None, units=1, series="trusty", openstack=None,
-                 source=None, stable=False):
+                 source=None, stable=True):
         super(BasicDeployment, self).__init__(series, openstack, source,
                                               stable)
         self.units = units
