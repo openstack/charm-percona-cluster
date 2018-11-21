@@ -24,6 +24,8 @@ provides:
   nrpe-external-master:
     interface: nrpe-external-master
     scope: container
+  master:
+    interface: mysql-async-replication
 peers:
   cluster:
     interface: percona-cluster
@@ -31,3 +33,5 @@ requires:
   ha:
     interface: hacluster
     scope: container
+  slave:
+    interface: mysql-async-replication

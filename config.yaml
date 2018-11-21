@@ -321,3 +321,23 @@ options:
         WARNING Please read all documentation before changing the default value which may have
         unintended consequences. It may be necessary to set this value higher during deploy time
         (PT15S) and subsequently change it back to the default (PT3S) after deployment.
+  databases-to-replicate:
+    type: string
+    default:
+    description: |
+      Databases and tables to replicate using MySQL asynchronous replication.
+      The databases should be separated with a semicolon while the tables
+      should be separated with a comma. No tables mean that the whole database
+      will be replicated. For example "database1:table1,table2;database2"
+      will replicate "table1" and "table2" tables from "database1" databasae
+      and all tables from "database2" database.
+      .
+      NOTE: This option should be used only when relating one cluster to the
+      other. It does not affect Galera synchronous replication.
+  cluster-id:
+    type: int
+    default:
+    description: |
+      Cluster ID to be used when using MySQL asynchronous replication.
+      .
+      NOTE: This value must be different for each cluster.
