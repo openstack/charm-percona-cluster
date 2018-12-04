@@ -1,7 +1,10 @@
+import json
 import mock
 import shutil
 import sys
 import tempfile
+
+import charmhelpers.contrib.openstack.ha.utils as ch_ha_utils
 
 from test_utils import CharmTestCase
 
@@ -21,8 +24,6 @@ TO_PATCH = ['log', 'config',
             'relation_ids',
             'relation_set',
             'update_nrpe_config',
-            'get_iface_for_address',
-            'get_netmask_for_address',
             'is_bootstrapped',
             'network_get_primary_address',
             'resolve_network_cidr',
@@ -30,8 +31,8 @@ TO_PATCH = ['log', 'config',
             'resolve_hostname_to_ip',
             'is_clustered',
             'get_ipv6_addr',
-            'get_hacluster_config',
-            'update_dns_ha_resource_params',
+            'update_hacluster_dns_ha',
+            'update_hacluster_vip',
             'sst_password',
             'seeded',
             'is_leader',
@@ -113,117 +114,101 @@ class TestHARelation(CharmTestCase):
         self.network_get_primary_address.side_effect = NotImplementedError
         self.sst_password.return_value = 'ubuntu'
 
-    def test_resources(self):
-        self.relation_ids.return_value = ['ha:1']
-        password = 'ubuntu'
-        helper = mock.Mock()
-        attrs = {'get_mysql_password.return_value': password}
-        helper.configure_mock(**attrs)
-        self.get_db_helper.return_value = helper
-        self.get_netmask_for_address.return_value = None
-        self.get_iface_for_address.return_value = None
-        self.test_config.set('vip', '10.0.3.3')
-        self.get_hacluster_config.return_value = {
-            'vip': '10.0.3.3',
-            'ha-bindiface': 'eth0',
-            'ha-mcastport': 5490,
-        }
+    def test_ha_relation_joined(self):
+        # dns-ha: False
+        self.config.return_value = False
+        self.relation_ids.return_value = ['rid:23']
 
-        def f(k):
-            return self.test_config.get(k)
-
-        self.config.side_effect = f
+        def _add_vip_info(svc, rel_info):
+            rel_info['groups'] = {
+                'grp_mysql_vips': 'res_mysql_1e39e82_vip'}
+            print(rel_info)
+        self.update_hacluster_vip.side_effect = _add_vip_info
         hooks.ha_relation_joined()
-
-        resources = {'res_mysql_vip': 'ocf:heartbeat:IPaddr2',
-                     'res_mysql_monitor': 'ocf:percona:mysql_monitor'}
-        resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
-                                             'cidr_netmask="24" '
-                                             'nic="eth0"'),
-                           'res_mysql_monitor':
-                           hooks.RES_MONITOR_PARAMS % {'sstpass': 'ubuntu'}}
-        groups = {'grp_percona_cluster': 'res_mysql_vip'}
-
-        clones = {'cl_mysql_monitor': 'res_mysql_monitor meta interleave=true'}
-
-        colocations = {'colo_percona_cluster': 'inf: grp_percona_cluster cl_mysql_monitor'}  # noqa
-
-        locations = {'loc_percona_cluster':
-                     'grp_percona_cluster rule inf: writable eq 1'}
-
-        self.relation_set.assert_called_with(
-            relation_id='ha:1', corosync_bindiface=f('ha-bindiface'),
-            corosync_mcastport=f('ha-mcastport'), resources=resources,
-            resource_params=resource_params, groups=groups,
-            clones=clones, colocations=colocations, locations=locations)
-
-    def test_resource_params_vip_cidr_iface_autodetection(self):
-        """
-        Auto-detected values for vip_cidr and vip_iface are used to configure
-        VIPs, even when explicit config options are provided.
-        """
-        self.relation_ids.return_value = ['ha:1']
-        helper = mock.Mock()
-        self.get_db_helper.return_value = helper
-        self.get_netmask_for_address.return_value = '20'
-        self.get_iface_for_address.return_value = 'eth1'
-        self.test_config.set('vip', '10.0.3.3')
-        self.test_config.set('vip_cidr', '16')
-        self.test_config.set('vip_iface', 'eth0')
-        self.get_hacluster_config.return_value = {
-            'vip': '10.0.3.3',
-            'ha-bindiface': 'eth0',
-            'ha-mcastport': 5490,
+        base_settings = {
+            'clones': {
+                'cl_mysql_monitor': (
+                    'res_mysql_monitor meta interleave=true')},
+            'colocations': {
+                'colo_mysql': (
+                    'inf: grp_mysql_vips '
+                    'cl_mysql_monitor')},
+            'resource_params': {
+                'res_mysql_monitor': (
+                    'params user="sstuser" '
+                    'password="ubuntu" '
+                    'pid="/var/run/mysqld/mysqld.pid" '
+                    'socket="/var/run/mysqld/mysqld.sock" '
+                    'max_slave_lag="5" '
+                    'cluster_type="pxc" '
+                    'op monitor interval="1s" '
+                    'timeout="30s" '
+                    'OCF_CHECK_LEVEL="1"')},
+            'locations': {
+                'loc_mysql': (
+                    'grp_mysql_vips '
+                    'rule inf: writable eq 1')},
+            'resources': {
+                'res_mysql_monitor': 'ocf:percona:mysql_monitor'},
+            'delete_resources': ['loc_percona_cluster', 'grp_percona_cluster',
+                                 'res_mysql_vip'],
+            'groups': {
+                'grp_mysql_vips': 'res_mysql_1e39e82_vip'}}
+        self.update_hacluster_vip.assert_called_once_with(
+            'mysql',
+            base_settings)
+        settings = {
+            'json_{}'.format(k): json.dumps(v,
+                                            **ch_ha_utils.JSON_ENCODE_OPTIONS)
+            for k, v in base_settings.items() if v
         }
+        self.relation_set.assert_called_once_with(
+            relation_id='rid:23',
+            **settings)
 
-        def f(k):
-            return self.test_config.get(k)
-
-        self.config.side_effect = f
+    def test_ha_relation_joined_dnsha(self):
+        # dns-ha: False
+        self.config.return_value = True
+        self.relation_ids.return_value = ['rid:23']
         hooks.ha_relation_joined()
-
-        resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
-                                             'cidr_netmask="20" '
-                                             'nic="eth1"'),
-                           'res_mysql_monitor':
-                           hooks.RES_MONITOR_PARAMS % {'sstpass': 'ubuntu'}}
-
-        call_args, call_kwargs = self.relation_set.call_args
-        self.assertEqual(resource_params, call_kwargs['resource_params'])
-
-    def test_resource_params_no_vip_cidr_iface_autodetection(self):
-        """
-        When autodetecting vip_cidr and vip_iface fails, values from
-        vip_cidr and vip_iface config options are used instead.
-        """
-        self.relation_ids.return_value = ['ha:1']
-        helper = mock.Mock()
-        self.get_db_helper.return_value = helper
-        self.get_netmask_for_address.return_value = None
-        self.get_iface_for_address.return_value = None
-        self.test_config.set('vip', '10.0.3.3')
-        self.test_config.set('vip_cidr', '16')
-        self.test_config.set('vip_iface', 'eth1')
-        self.get_hacluster_config.return_value = {
-            'vip': '10.0.3.3',
-            'ha-bindiface': 'eth1',
-            'ha-mcastport': 5490,
+        base_settings = {
+            'clones': {
+                'cl_mysql_monitor': (
+                    'res_mysql_monitor meta interleave=true')},
+            'colocations': {
+                'colo_mysql': (
+                    'inf: grp_mysql_hostnames '
+                    'cl_mysql_monitor')},
+            'resource_params': {
+                'res_mysql_monitor': (
+                    'params user="sstuser" '
+                    'password="ubuntu" '
+                    'pid="/var/run/mysqld/mysqld.pid" '
+                    'socket="/var/run/mysqld/mysqld.sock" '
+                    'max_slave_lag="5" '
+                    'cluster_type="pxc" '
+                    'op monitor interval="1s" '
+                    'timeout="30s" '
+                    'OCF_CHECK_LEVEL="1"')},
+            'locations': {
+                'loc_mysql': (
+                    'grp_mysql_hostnames '
+                    'rule inf: writable eq 1')},
+            'delete_resources': ['loc_percona_cluster', 'grp_percona_cluster',
+                                 'res_mysql_vip'],
+            'resources': {
+                'res_mysql_monitor': 'ocf:percona:mysql_monitor'}}
+        self.update_hacluster_dns_ha.assert_called_once_with(
+            'mysql',
+            base_settings)
+        settings = {
+            'json_{}'.format(k): json.dumps(v,
+                                            **ch_ha_utils.JSON_ENCODE_OPTIONS)
+            for k, v in base_settings.items() if v
         }
-
-        def f(k):
-            return self.test_config.get(k)
-
-        self.config.side_effect = f
-        hooks.ha_relation_joined()
-
-        resource_params = {'res_mysql_vip': ('params ip="10.0.3.3" '
-                                             'cidr_netmask="16" '
-                                             'nic="eth1"'),
-                           'res_mysql_monitor':
-                           hooks.RES_MONITOR_PARAMS % {'sstpass': 'ubuntu'}}
-
-        call_args, call_kwargs = self.relation_set.call_args
-        self.assertEqual(resource_params, call_kwargs['resource_params'])
+        self.relation_set.assert_called_once_with(
+            relation_id='rid:23',
+            **settings)
 
 
 class TestHostResolution(CharmTestCase):

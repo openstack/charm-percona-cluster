@@ -23,7 +23,6 @@ from charmhelpers.core.hookenv import (
     WARNING,
     is_leader,
     network_get_primary_address,
-    charm_name,
     leader_get,
     leader_set,
     open_port,
@@ -54,13 +53,10 @@ from charmhelpers.contrib.database.mysql import (
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_clustered,
-    get_hacluster_config,
 )
 from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.network.ip import (
     get_address_in_network,
-    get_iface_for_address,
-    get_netmask_for_address,
     get_ipv6_addr,
     is_address_in_network,
     resolve_network_cidr,
@@ -77,7 +73,11 @@ from charmhelpers.contrib.openstack.utils import (
     clear_unit_paused,
 )
 from charmhelpers.contrib.openstack.ha.utils import (
-    update_dns_ha_resource_params,
+    DNSHA_GROUP_NAME,
+    JSON_ENCODE_OPTIONS,
+    VIP_GROUP_NAME,
+    update_hacluster_vip,
+    update_hacluster_dns_ha,
 )
 
 from percona_utils import (
@@ -872,60 +872,36 @@ def shared_db_changed(relation_id=None, unit=None):
 
 @hooks.hook('ha-relation-joined')
 def ha_relation_joined(relation_id=None):
-    cluster_config = get_hacluster_config()
     sstpsswd = sst_password()
-    resources = {'res_mysql_monitor': 'ocf:percona:mysql_monitor'}
-    resource_params = {'res_mysql_monitor':
-                       RES_MONITOR_PARAMS % {'sstpass': sstpsswd}}
+    _relation_data = {
+        'resources': {
+            'res_mysql_monitor': 'ocf:percona:mysql_monitor'},
+        'resource_params': {
+            'res_mysql_monitor': RES_MONITOR_PARAMS % {'sstpass': sstpsswd}},
+        'clones': {
+            'cl_mysql_monitor': 'res_mysql_monitor meta interleave=true'},
+        'delete_resources': ['loc_percona_cluster', 'grp_percona_cluster',
+                             'res_mysql_vip']
+    }
 
     if config('dns-ha'):
-        update_dns_ha_resource_params(relation_id=relation_id,
-                                      resources=resources,
-                                      resource_params=resource_params)
-        group_name = 'grp_{}_hostnames'.format(charm_name())
-        groups = {group_name: 'res_{}_access_hostname'.format(charm_name())}
-
+        update_hacluster_dns_ha('mysql', _relation_data)
+        group_name = DNSHA_GROUP_NAME.format(service='mysql')
     else:
-        vip_iface = (get_iface_for_address(cluster_config['vip']) or
-                     config('vip_iface'))
-        vip_cidr = (get_netmask_for_address(cluster_config['vip']) or
-                    config('vip_cidr'))
+        update_hacluster_vip('mysql', _relation_data)
+        group_name = VIP_GROUP_NAME.format(service='mysql')
 
-        if config('prefer-ipv6'):
-            res_mysql_vip = 'ocf:heartbeat:IPv6addr'
-            vip_params = 'params ipv6addr="%s" cidr_netmask="%s" nic="%s"' % \
-                         (cluster_config['vip'], vip_cidr, vip_iface)
-        else:
-            res_mysql_vip = 'ocf:heartbeat:IPaddr2'
-            vip_params = 'params ip="%s" cidr_netmask="%s" nic="%s"' % \
-                         (cluster_config['vip'], vip_cidr, vip_iface)
-
-        resources['res_mysql_vip'] = res_mysql_vip
-
-        resource_params['res_mysql_vip'] = vip_params
-
-        group_name = 'grp_percona_cluster'
-        groups = {group_name: 'res_mysql_vip'}
-
-    clones = {'cl_mysql_monitor': 'res_mysql_monitor meta interleave=true'}
-
-    colocations = {'colo_percona_cluster': 'inf: {} cl_mysql_monitor'
-                                           ''.format(group_name)}
-
-    locations = {'loc_percona_cluster':
-                 '{} rule inf: writable eq 1'
-                 ''.format(group_name)}
+    _relation_data['locations'] = {
+        'loc_mysql': '{} rule inf: writable eq 1'.format(group_name)}
+    _relation_data['colocations'] = {
+        'colo_mysql': 'inf: {} cl_mysql_monitor'.format(group_name)}
+    settings = {
+        'json_{}'.format(k): json.dumps(v, **JSON_ENCODE_OPTIONS)
+        for k, v in _relation_data.items() if v
+    }
 
     for rel_id in relation_ids('ha'):
-        relation_set(relation_id=rel_id,
-                     corosync_bindiface=cluster_config['ha-bindiface'],
-                     corosync_mcastport=cluster_config['ha-mcastport'],
-                     resources=resources,
-                     resource_params=resource_params,
-                     groups=groups,
-                     clones=clones,
-                     colocations=colocations,
-                     locations=locations)
+        relation_set(relation_id=rel_id, **settings)
 
 
 @hooks.hook('ha-relation-changed')

@@ -1,6 +1,7 @@
 # basic deployment test class for percona-xtradb-cluster
 
 import amulet
+import hashlib
 import re
 import os
 import socket
@@ -132,7 +133,10 @@ class BasicDeployment(OpenStackAmuletDeployment):
             _, code = self.master_unit.run('sudo crm_verify --live-check')
             assert code == 0, "'crm_verify --live-check' failed"
 
-            resources = ['res_mysql_vip']
+            vip_key = 'res_mysql_{}_vip'.format(
+                hashlib.sha1(self.vip.encode('UTF-8')).hexdigest()[:7])
+            resources = [vip_key]
+
             resources += ['res_mysql_monitor:%d' %
                           m for m in range(self.units)]
 
