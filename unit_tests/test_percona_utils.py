@@ -1007,13 +1007,55 @@ class TestAsynchronousReplication(CharmTestCase):
                                                        self.TO_PATCH)
 
     @mock.patch.object(percona_utils, 'config')
+    def test_get_databases_to_replicate_no_config_id(self, mock_config):
+        config = {}
+        mock_config.side_effect = lambda k: config.get(k)
+        with self.assertRaises(percona_utils.ClusterIDRequired):
+            percona_utils.get_databases_to_replicate()
+
+    @mock.patch.object(percona_utils, 'config')
     def test_get_databases_to_replicate(self, mock_config):
-        config = {'cluster-id': 1, 'databases-to-replicate': 'db1:tb1,tb2;db2'}
+        config = {
+            'cluster-id': 3,
+            'databases-to-replicate': 'db1:tb1,tb2;db2'}
         mock_config.side_effect = lambda k: config.get(k)
         percona_utils.get_databases_to_replicate()
         self.assertEqual(percona_utils.get_databases_to_replicate(),
                          ([{'database': 'db1', 'tables': ['tb1', 'tb2']},
                            {'database': 'db2', 'tables': []}]))
+
+    @mock.patch.object(percona_utils, 'config')
+    def test_get_databases_to_replicate_many(self, mock_config):
+        config = {
+            'cluster-id': 3,
+            'databases-to-replicate': 'db1:tb1;db2:tb2;db3;db4;db5:tb5,tb6'}
+        mock_config.side_effect = lambda k: config.get(k)
+        percona_utils.get_databases_to_replicate()
+        self.assertEqual(percona_utils.get_databases_to_replicate(),
+                         ([{'database': 'db1', 'tables': ['tb1']},
+                           {'database': 'db2', 'tables': ['tb2']},
+                           {'database': 'db3', 'tables': []},
+                           {'database': 'db4', 'tables': []},
+                           {'database': 'db5', 'tables': ['tb5', 'tb6']}
+                           ]))
+
+    @mock.patch.object(percona_utils, 'config')
+    def test_get_databases_to_replicate_space(self, mock_config):
+        config = {
+            'cluster-id': 3,
+            'databases-to-replicate': 'db1 tb1; db2,tb2;db3:db4'}
+        mock_config.side_effect = lambda k: config.get(k)
+        with self.assertRaises(percona_utils.InvalidDatabasesToReplicate):
+            percona_utils.get_databases_to_replicate()
+
+    @mock.patch.object(percona_utils, 'config')
+    def test_get_databases_to_replicate_comma(self, mock_config):
+        config = {
+            'cluster-id': 3,
+            'databases-to-replicate': 'db1:tb1;db2,tb2;db3:db4'}
+        mock_config.side_effect = lambda k: config.get(k)
+        with self.assertRaises(percona_utils.InvalidDatabasesToReplicate):
+            percona_utils.get_databases_to_replicate()
 
     @mock.patch.object(percona_utils, 'create_replication_user')
     @mock.patch.object(percona_utils, 'list_replication_users')
