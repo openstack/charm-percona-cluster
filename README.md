@@ -124,6 +124,28 @@ If both 'vip' and 'dns-ha' are set, as they are mutually exclusive
 If 'dns-ha' is set and 'os-access-hostname' is not set
 If the 'access' binding is not set and 'dns-ha' is set, consumers of the db may not be allowed to connect
 
+## MySQL asynchronous replication
+
+This charm supports MySQL asynchronous replication feature which can be used
+to replicate databases between multiple Percona XtraDB Clusters. In order to
+setup master-slave replication of "example1" and "example2" databases between
+"pxc1" and "pxc2" applications, first configure mandatory options:
+
+    juju config pxc1 databases-to-replicate="database1:table1,table2;database2"
+    juju config pxc2 databases-to-replicate="database1:table1,table2;database2"
+    juju config pxc1 cluster-id=1
+    juju config pxc2 cluster-id=2
+
+and then relate them:
+
+    juju relate pxc1:master pxc2:slave
+
+In order to setup master-master replication, add another relation:
+
+    juju relate pxc2:master pxc1:slave
+
+In the same way circular replication can be setup between multiple clusters.
+
 ## Network Space support
 
 This charm supports the use of Juju Network Spaces, allowing the charm to be bound

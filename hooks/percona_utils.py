@@ -3,8 +3,11 @@ import subprocess
 from subprocess import Popen, PIPE
 import socket
 import tempfile
+import copy
 import os
+import re
 import shutil
+import six
 import uuid
 from functools import partial
 import time
@@ -1078,12 +1081,48 @@ def get_wsrep_provider_options():
     return ';'.join(wsrep_provider_options)
 
 
+class ClusterIDRequired(Exception):
+    pass
+
+
+class ClusterIDIdentical(Exception):
+    pass
+
+
+def get_cluster_id():
+    """ Return cluster id (lp1776171)
+
+    Return cluster ID for MySQL asynchronous replication
+    :returns: int cluster_id
+    """
+    if not config('cluster-id'):
+        msg = ("Master / Slave relation requires 'cluster-id' option")
+        status_set("blocked", msg)
+        raise ClusterIDRequired(msg)
+    cluster_id = config('cluster-id')
+    for rid in relation_ids('master'):
+        for unit in related_units(rid):
+            if relation_get(attribute='cluster_id',
+                            rid=rid,
+                            unit=unit) == cluster_id:
+                msg = ("'cluster-id' option must be unique within a cluster")
+                status_set('blocked', msg)
+                raise ClusterIDIdentical(msg)
+    for rid in relation_ids('slave'):
+        for unit in related_units(rid):
+            if relation_get(attribute='cluster_id',
+                            rid=rid,
+                            unit=unit) == cluster_id:
+                msg = ("'cluster-id' option must be unique within a cluster")
+                status_set('blocked', msg)
+                raise ClusterIDIdentical(msg)
+    return cluster_id
+
+
 def get_server_id():
     """ Return unique server id for bin log replication
-
     Server ID must be a unique, non-zero, positive number from 1 to 2**32 - 1
     https://dev.mysql.com/doc/refman/8.0/en/replication-options.html
-
     :returns: int server_id
     """
     MAX_SERVER_ID = 2**32 - 1
@@ -1128,3 +1167,283 @@ def check_for_socket(file_name, exists=True, sleep=10, attempts=12):
     # If we get here throw an exception
     raise Exception("Socket {} not found after {} attempts."
                     .format(file_name, attempts))
+
+
+class InvalidDatabasesToReplicate(Exception):
+    pass
+
+
+class InvalidCharacters(Exception):
+    pass
+
+
+def get_databases_to_replicate():
+    """ Get databases_to_replicate (lp1776171)
+
+    Returns databases and tables to replicate using MySQL asynchronous
+    replication
+
+    :returns: list of dicts of databases and tables to replicate
+    :rtype: [{'database': str, 'tables': [str, ...]}, ...]
+    :raises: OperationalError
+    """
+    if not config('cluster-id'):
+        msg = ("'cluster-id' option must be set when using "
+               "'databases-to-replicate' option")
+        status_set('blocked', msg)
+        raise ClusterIDRequired(msg)
+
+    databases_to_replicate = []
+    entries = config('databases-to-replicate').strip().split(';')
+    try:
+        for entry in entries:
+            databases_and_tables = {}
+            entry_split = entry.split(':')
+            databases_and_tables['database'] = (
+                check_invalid_chars(entry_split[0]))
+            try:
+                # Tables present
+                databases_and_tables['tables'] = (
+                    check_invalid_chars(entry_split[1].split(',')))
+            except IndexError:
+                # If there are no tables
+                databases_and_tables['tables'] = []
+            databases_to_replicate.append(databases_and_tables)
+    except InvalidCharacters as e:
+        raise InvalidDatabasesToReplicate(
+            "The configuration setting databases-to-replicate is malformed. {}"
+            .format(e.message))
+    return databases_to_replicate
+
+
+def check_invalid_chars(data, bad_chars_re="[\^\\/?%*:|\"'<>., ]"):
+    """ Check for invalid characters
+
+    Run a pattern check on the data and raise an InvalidCharacters exception
+    if there is a match. Return the original data untouched if no match is
+    found.
+
+    Input can be a list or a string.
+
+    :param data: List or string under test
+    :type data: str or list
+    :param bad_chars_re: String regex to check against
+    :type bad_chars_re: str
+    :raises: InvalidCharacters
+    :returns: The original data untouched
+    :rtype: str or list
+    """
+    if isinstance(data, six.string_types):
+        data_strings = [data]
+    else:
+        data_strings = copy.copy(data)
+
+    for data_string in data_strings:
+        m = re.search(bad_chars_re, data_string)
+        if m:
+            raise(InvalidCharacters(
+                "Invalid character '{}' in '{}'"
+                .format(m.group(0), data_string)))
+    return data
+
+
+def configure_master():
+    """ Configure master (lp1776171)
+
+    Calls 'create_replication_user' function for IP addresses of all related
+    units.
+
+    """
+    new_slave_addresses = []
+    old_slave_addresses = list_replication_users()
+    for rid in relation_ids('master'):
+        for unit in related_units(rid):
+            if not relation_get(attribute='slave_address', rid=rid, unit=unit):
+                log("No IP address for {} yet".format(unit), level=DEBUG)
+                return
+            new_slave_addresses.append(
+                relation_get(attribute='slave_address', rid=rid, unit=unit))
+    # If not yet created
+    for new_slave_address in new_slave_addresses:
+        if new_slave_address not in old_slave_addresses:
+            create_replication_user(new_slave_address,
+                                    leader_get('async-rep-password'))
+
+
+def configure_slave():
+    """ Configure slave (lp1776171)
+
+    Configures MySQL asynchronous replication slave.
+
+    :raises: OperationalError
+    """
+    rel_data = {}
+    for rid in relation_ids('slave'):
+        for unit in related_units(rid):
+            rdata = relation_get(unit=unit, rid=rid)
+            is_leader = rdata.get('leader', None)
+            if is_leader is None:
+                log("No relation data for {} yet".format(unit), level=DEBUG)
+                continue
+            try:
+                if (is_leader and not(all(
+                    rdata.get("master_{}".format(k)) for k in ["address",
+                                                               "file",
+                                                               "password",
+                                                               "position"]))):
+                    log("No full relation data for {} yet".format(unit),
+                        level=DEBUG)
+                    continue
+                m_helper = get_db_helper()
+                try:
+                    m_helper.connect(user='replication',
+                                     password=rdata.get('master_password'),
+                                     host=rdata.get('master_address'))
+                    rel_data['master_address'] = rdata.get('master_address')
+                    rel_data['master_file'] = rdata.get('master_file')
+                    rel_data['master_password'] = rdata.get('master_password')
+                    rel_data['master_position'] = rdata.get('master_position')
+                except OperationalError:
+                    log("Could not connect to {}".format(unit), level=DEBUG)
+            except KeyError:
+                log("No relation data for {} yet".format(unit), level=DEBUG)
+                raise
+    if not rel_data:
+        log("Unable to find the master", level=DEBUG)
+        return
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", level=DEBUG)
+        return
+    m_helper.execute("STOP SLAVE;")
+    m_helper.execute(("CHANGE MASTER TO master_host='{master_address}', "
+                      "master_port=3306, master_user='replication', "
+                      "master_password='{master_password}', "
+                      "master_log_file='{master_file}', "
+                      "master_log_pos={master_position};").format(**rel_data))
+    m_helper.execute("START SLAVE;")
+
+
+def deconfigure_slave():
+    """ Deconfigure slave (lp1776171)
+
+    Deconfigures MySQL asynchronous replication slave on relation departure.
+
+    :raises: OperationalError
+    """
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", level=DEBUG)
+        return
+    m_helper.execute("STOP SLAVE;")
+    m_helper.execute("RESET SLAVE ALL;")
+
+
+def get_master_status(interface):
+    """ Get master status (lp1776171)
+
+    Returns MySQL asynchronous replication master status.
+
+    :param interface: relation name
+    :type interface: str
+    :returns: tuple of (IP address in space associated with 'master' binding,
+                        replication file,
+                        replication file position)
+    :rtype: (str, str, str)
+    :raises: OperationalError
+    """
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", level=DEBUG)
+        raise
+    results = m_helper.select("SHOW MASTER STATUS;")
+    return network_get_primary_address(interface), results[0][0], results[0][1]
+
+
+def get_slave_status():
+    """ Get slave status (lp1776171)
+
+    Returns MySQL asynchronous replication slave status.
+
+    returns: currently configured master IP address
+    rtype: str
+    :raises: OperationalError
+    """
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", level=DEBUG)
+        raise
+    results = m_helper.select("SHOW SLAVE STATUS;")
+    return results[0][1]
+
+
+def create_replication_user(slave_address, master_password):
+    """ Create replication user (lp1776171)
+
+    Grants access for MySQL asynchronous replication slave.
+
+    :param slave_address: slave IP address
+    :type slave_address: str
+    :param master_password: replication password
+    :type master_password: str
+    :raises: OperationalError
+    """
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", level=DEBUG)
+        return
+    m_helper.execute(("GRANT REPLICATION SLAVE ON *.* TO ""'replication'@'{}' "
+                      "IDENTIFIED BY '{}';").format(slave_address,
+                                                    master_password))
+
+
+def delete_replication_user(slave_address):
+    """ Delete replication user (lp1776171)
+
+    Revokes access for MySQL asynchronous replication slave.
+
+    :param slave_address: slave IP address
+    :type slave_address: str
+    :raises: OperationalError
+    """
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", DEBUG)
+        return
+    m_helper.execute(("DELETE FROM mysql.user WHERE Host='{}' AND "
+                      "User='replication';").format(slave_address))
+
+
+def list_replication_users():
+    """ List replication users (lp1776171)
+
+    Lists IP addresses of slaves which have been granted with an access for
+    MySQL asynchronous replication.
+
+    :returns: IP addresses of slaves
+    :rtype replication_users: [str]
+    :raises: OperationalError
+    """
+    replication_users = []
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", DEBUG)
+        raise
+    for result in m_helper.select("SELECT Host FROM mysql.user WHERE "
+                                  "User='replication';"):
+        replication_users.append(result[0])
+    return replication_users

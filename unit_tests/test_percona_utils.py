@@ -990,3 +990,190 @@ class TestUpdateBootstrapUUID(CharmTestCase):
                          'leader-ip': '10.10.10.10'}
         self.leader_get.return_value = leader_config
         self.assertTrue(percona_utils.is_leader_bootstrapped())
+
+
+class TestAsynchronousReplication(CharmTestCase):
+    TO_PATCH = [
+        'config',
+        'leader_get',
+        'network_get_primary_address',
+        'related_units',
+        'relation_get',
+        'relation_ids',
+    ]
+
+    def setUp(self):
+        super(TestAsynchronousReplication, self).setUp(percona_utils,
+                                                       self.TO_PATCH)
+
+    @mock.patch.object(percona_utils, 'config')
+    def test_get_databases_to_replicate(self, mock_config):
+        config = {'cluster-id': 1, 'databases-to-replicate': 'db1:tb1,tb2;db2'}
+        mock_config.side_effect = lambda k: config.get(k)
+        percona_utils.get_databases_to_replicate()
+        self.assertEqual(percona_utils.get_databases_to_replicate(),
+                         ([{'database': 'db1', 'tables': ['tb1', 'tb2']},
+                           {'database': 'db2', 'tables': []}]))
+
+    @mock.patch.object(percona_utils, 'create_replication_user')
+    @mock.patch.object(percona_utils, 'list_replication_users')
+    def test_configure_master_slave_address_not_in_relation_data(
+            self, mock_list_replication_users, mock_create_replication_user):
+        self.relation_ids.return_value = [1]
+        self.related_units.return_value = [1, 2, 3]
+        self.relation_get.return_value = None
+        percona_utils.configure_master()
+        mock_create_replication_user.assert_not_called()
+
+    @mock.patch.object(percona_utils, 'create_replication_user')
+    @mock.patch.object(percona_utils, 'list_replication_users')
+    def test_configure_master_slave_address_in_relation_data_and_created(
+            self, mock_list_replication_users, mock_create_replication_user):
+        self.relation_ids.return_value = [1]
+        self.related_units.return_value = [1, 2, 3]
+
+        def _mock_rel_get(*args, **kwargs):
+            unit_id = kwargs.get('unit')
+            return '10.0.1.{}'.format(unit_id)
+
+        self.relation_get.side_effect = _mock_rel_get
+        mock_list_replication_users.return_value = ['10.0.1.1',
+                                                    '10.0.1.2',
+                                                    '10.0.1.3']
+        percona_utils.configure_master()
+        mock_create_replication_user.assert_not_called()
+
+    @mock.patch.object(percona_utils, 'create_replication_user')
+    @mock.patch.object(percona_utils, 'list_replication_users')
+    def test_configure_master_slave_address_in_relation_data_and_not_created(
+            self, mock_list_replication_users, mock_create_replication_user):
+        self.relation_ids.return_value = [1]
+        self.related_units.return_value = [1, 2, 3]
+
+        def _mock_rel_get(*args, **kwargs):
+            unit_id = kwargs.get('unit')
+            return '10.0.1.{}'.format(unit_id)
+
+        self.relation_get.side_effect = _mock_rel_get
+        mock_list_replication_users.return_value = ['10.0.1.1', '10.0.1.2']
+        self.leader_get.return_value = 'password'
+        percona_utils.configure_master()
+        mock_create_replication_user.assert_called_once_with('10.0.1.3',
+                                                             'password')
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_configure_slave_no_leader(
+            self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        self.relation_ids.return_value = [1]
+        self.related_units.return_value = [1, 2, 3]
+
+        def _mock_rel_get(*args, **kwargs):
+            return {'private-address': '10.0.0.1'}
+
+        self.relation_get.side_effect = _mock_rel_get
+        mock_get_db_helper.return_value = my_mock
+        percona_utils.configure_slave()
+        my_mock.execute.assert_not_called()
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_configure_slave_leader_and_no_full_relation_data(
+            self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        self.relation_ids.return_value = [1]
+        self.related_units.return_value = [1, 2, 3]
+
+        def _mock_rel_get(*args, **kwargs):
+            return {'private-address': '10.0.0.1',
+                    'leader': True}
+
+        self.relation_get.side_effect = _mock_rel_get
+        mock_get_db_helper.return_value = my_mock
+        percona_utils.configure_slave()
+        my_mock.execute.assert_not_called()
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_configure_slave_leader_and_full_relation_data(
+            self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        self.relation_ids.return_value = [1]
+        self.related_units.return_value = [1, 2, 3]
+
+        def _mock_rel_get(*args, **kwargs):
+            return {'private-address': '10.0.0.1',
+                    'leader': True,
+                    'master_address': '10.0.0.1',
+                    'master_file': 'file',
+                    'master_password': 'password',
+                    'master_position': 'position'}
+
+        self.relation_get.side_effect = _mock_rel_get
+        mock_get_db_helper.return_value = my_mock
+        sql1 = "STOP SLAVE;"
+        sql2 = ("CHANGE MASTER TO "
+                "master_host='10.0.0.1', "
+                "master_port=3306, "
+                "master_user='replication', "
+                "master_password='password', "
+                "master_log_file='file', "
+                "master_log_pos=position;")
+        sql3 = "START SLAVE;"
+        percona_utils.configure_slave()
+        my_mock.execute.assert_any_call(sql1)
+        my_mock.execute.assert_any_call(sql2)
+        my_mock.execute.assert_any_call(sql3)
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_deconfigure_slave(self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        mock_get_db_helper.return_value = my_mock
+        sql1 = "STOP SLAVE;"
+        sql2 = "RESET SLAVE ALL;"
+        percona_utils.deconfigure_slave()
+        my_mock.execute.assert_any_call(sql1)
+        my_mock.execute.assert_any_call(sql2)
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_get_master_status(self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        self.network_get_primary_address.return_value = '10.0.0.1'
+        mock_get_db_helper.return_value = my_mock
+        my_mock.select.return_value = [['file', 'position']]
+        self.assertEqual(percona_utils.get_master_status('master'),
+                         ('10.0.0.1', 'file', 'position'))
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_get_slave_status(self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        mock_get_db_helper.return_value = my_mock
+        my_mock.select.return_value = [['state', '10.0.0.1']]
+        self.assertEqual(percona_utils.get_slave_status(), ('10.0.0.1'))
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_create_replication_user(self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        slave_address = '10.0.1.1'
+        master_password = 'password'
+        mock_get_db_helper.return_value = my_mock
+        sql = ("GRANT REPLICATION SLAVE ON *.* TO 'replication'@'{}' "
+               "IDENTIFIED BY '{}';").format(slave_address, master_password)
+        percona_utils.create_replication_user(slave_address, master_password)
+        my_mock.execute.assert_called_with(sql)
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_delete_replication_user(self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        slave_address = '10.0.1.1'
+        mock_get_db_helper.return_value = my_mock
+        sql = ("DELETE FROM mysql.user WHERE Host='{}' AND "
+               "User='replication';").format(slave_address)
+        percona_utils.delete_replication_user(slave_address)
+        my_mock.execute.assert_called_with(sql)
+
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_list_replication_users(self, mock_get_db_helper):
+        my_mock = mock.Mock()
+        mock_get_db_helper.return_value = my_mock
+        my_mock.select.return_value = [['10.0.0.1'], ['10.0.0.2']]
+        self.assertEqual(percona_utils.list_replication_users(),
+                         (['10.0.0.1', '10.0.0.2']))
