@@ -341,3 +341,20 @@ options:
       Cluster ID to be used when using MySQL asynchronous replication.
       .
       NOTE: This value must be different for each cluster.
+  wsrep-slave-threads:
+    type: int
+    default:
+    description: |
+      Specifies the number of threads that can apply replication transactions in
+      parallel. Galera supports true parallel replication that applies
+      transactions in parallel only when it is safe to do so.  Unset leaves the
+      default value of 1.
+  gcs-fc-limit:
+    type: int
+    default:
+    description: |
+      This setting controls when flow control engages. Simply speaking, if the
+      wsrep_local_recv_queue exceeds this size on a given node, a pausing flow
+      control message will be sent.  The fc_limit defaults to 16 transactions.
+      This effectively means that this is as far as a given node can be behind
+      committing transactions from the cluster.

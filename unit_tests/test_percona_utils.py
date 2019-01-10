@@ -347,7 +347,12 @@ class UtilsTests(CharmTestCase):
                     "gmcast.peer_timeout=PT15S")
         self.assertEqual(percona_utils.get_wsrep_provider_options(),
                          expected)
-
+        # set gcs.fs_limit=10000
+        _config = {"gcs-fc-limit": 10000}
+        mock_config.side_effect = lambda key: _config.get(key)
+        expected = "gcs.fc_limit=10000"
+        self.assertEqual(percona_utils.get_wsrep_provider_options(),
+                         expected)
         # peer_timeout bad setting
         _config = {"peer-timeout": "10"}
         mock_config.side_effect = lambda key: _config.get(key)

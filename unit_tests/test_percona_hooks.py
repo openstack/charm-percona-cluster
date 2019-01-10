@@ -1,10 +1,14 @@
 import json
+import logging
 import mock
+import os
 import shutil
 import sys
 import tempfile
+import yaml
 
 import charmhelpers.contrib.openstack.ha.utils as ch_ha_utils
+from charmhelpers.contrib.database.mysql import PerconaClusterHelper
 
 from test_utils import CharmTestCase
 
@@ -670,3 +674,164 @@ class TestUpgradeCharm(CharmTestCase):
         self.leader_set.assert_has_calls(
             [mock.call(**{'leader-ip': '10.10.10.10'}),
              mock.call(**{'root-password': 'mypasswd'})])
+
+
+class TestConfigs(CharmTestCase):
+
+    TO_PATCH = [
+        'config',
+        'is_leader',
+    ]
+
+    def setUp(self):
+        CharmTestCase.setUp(self, hooks, TO_PATCH)
+        self.config.side_effect = self.test_config.get
+        self.default_config = self._get_default_config()
+        for key, value in self.default_config.items():
+            self.test_config.set(key, value)
+        self.is_leader.return_value = False
+
+    def _load_config(self):
+        '''Walk backwords from __file__ looking for config.yaml,
+        load and return the 'options' section'
+        '''
+        config = None
+        f = __file__
+        while config is None:
+            d = os.path.dirname(f)
+            if os.path.isfile(os.path.join(d, 'config.yaml')):
+                config = os.path.join(d, 'config.yaml')
+                break
+            f = d
+
+        if not config:
+            logging.error('Could not find config.yaml in any parent directory '
+                          'of %s. ' % f)
+            raise Exception
+
+        return yaml.safe_load(open(config).read())['options']
+
+    def _get_default_config(self):
+        '''Load default charm config from config.yaml return as a dict.
+        If no default is set in config.yaml, its value is None.
+        '''
+        default_config = {}
+        config = self._load_config()
+        for k, v in config.iteritems():
+            if 'default' in v:
+                default_config[k] = v['default']
+            else:
+                default_config[k] = None
+        return default_config
+
+    @mock.patch.object(os, 'makedirs')
+    @mock.patch.object(hooks, 'get_cluster_host_ip')
+    @mock.patch.object(hooks, 'get_wsrep_provider_options')
+    @mock.patch.object(PerconaClusterHelper, 'parse_config')
+    @mock.patch.object(hooks, 'render')
+    @mock.patch.object(hooks, 'sst_password')
+    @mock.patch.object(hooks, 'lsb_release')
+    def test_render_config_defaults(self,
+                                    lsb_release,
+                                    sst_password,
+                                    render,
+                                    parse_config,
+                                    get_wsrep_provider_options,
+                                    get_cluster_host_ip,
+                                    makedirs):
+        parse_config.return_value = {'key_buffer': '32M'}
+        get_cluster_host_ip.return_value = '10.1.1.1'
+        get_wsrep_provider_options.return_value = None
+        sst_password.return_value = 'sstpassword'
+        lsb_release.return_value = {'DISTRIB_CODENAME': 'bionic'}
+        context = {
+            'server_id': hooks.get_server_id(),
+            'server-id': hooks.get_server_id(),
+            'is_leader': hooks.is_leader(),
+            'series_upgrade': hooks.is_unit_upgrading_set(),
+            'private_address': '10.1.1.1',
+            'innodb_autoinc_lock_mode': '2',
+            'cluster_hosts': '',
+            'enable_binlogs': self.default_config['enable-binlogs'],
+            'sst_password': 'sstpassword',
+            'sst_method': self.default_config['sst-method'],
+            'pxc_strict_mode': 'enforcing',
+            'binlogs_max_size': self.default_config['binlogs-max-size'],
+            'cluster_name': 'juju_cluster',
+            'innodb_file_per_table':
+            self.default_config['innodb-file-per-table'],
+            'table_open_cache': self.default_config['table-open-cache'],
+            'binlogs_path': self.default_config['binlogs-path'],
+            'binlogs_expire_days': self.default_config['binlogs-expire-days'],
+            'performance_schema': self.default_config['performance-schema'],
+            'key_buffer': '32M',
+            'default_storage_engine': 'InnoDB',
+            'wsrep_log_conflicts': True,
+            'ipv6': False,
+            'wsrep_provider': '/usr/lib/galera3/libgalera_smm.so',
+        }
+
+        hooks.render_config()
+        hooks.render.assert_called_once_with(
+            'mysqld.cnf',
+            '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
+            context,
+            perms=0o444)
+
+    @mock.patch.object(os, 'makedirs')
+    @mock.patch.object(hooks, 'get_cluster_host_ip')
+    @mock.patch.object(hooks, 'get_wsrep_provider_options')
+    @mock.patch.object(PerconaClusterHelper, 'parse_config')
+    @mock.patch.object(hooks, 'render')
+    @mock.patch.object(hooks, 'sst_password')
+    @mock.patch.object(hooks, 'lsb_release')
+    def test_render_config_wsrep_slave_threads(
+            self,
+            lsb_release,
+            sst_password,
+            render,
+            parse_config,
+            get_wsrep_provider_options,
+            get_cluster_host_ip,
+            makedirs):
+        parse_config.return_value = {'key_buffer': '32M'}
+        get_cluster_host_ip.return_value = '10.1.1.1'
+        get_wsrep_provider_options.return_value = None
+        sst_password.return_value = 'sstpassword'
+        self.test_config.set('wsrep-slave-threads', 2)
+        lsb_release.return_value = {'DISTRIB_CODENAME': 'bionic'}
+
+        context = {
+            'server_id': hooks.get_server_id(),
+            'server-id': hooks.get_server_id(),
+            'is_leader': hooks.is_leader(),
+            'series_upgrade': hooks.is_unit_upgrading_set(),
+            'private_address': '10.1.1.1',
+            'innodb_autoinc_lock_mode': '2',
+            'cluster_hosts': '',
+            'enable_binlogs': self.default_config['enable-binlogs'],
+            'sst_password': 'sstpassword',
+            'sst_method': self.default_config['sst-method'],
+            'pxc_strict_mode': 'enforcing',
+            'binlogs_max_size': self.default_config['binlogs-max-size'],
+            'cluster_name': 'juju_cluster',
+            'innodb_file_per_table':
+            self.default_config['innodb-file-per-table'],
+            'table_open_cache': self.default_config['table-open-cache'],
+            'binlogs_path': self.default_config['binlogs-path'],
+            'binlogs_expire_days': self.default_config['binlogs-expire-days'],
+            'performance_schema': self.default_config['performance-schema'],
+            'key_buffer': '32M',
+            'default_storage_engine': 'InnoDB',
+            'wsrep_log_conflicts': True,
+            'ipv6': False,
+            'wsrep_provider': '/usr/lib/galera3/libgalera_smm.so',
+            'wsrep_slave_threads': 2,
+        }
+
+        hooks.render_config()
+        hooks.render.assert_called_once_with(
+            'mysqld.cnf',
+            '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
+            context,
+            perms=0o444)

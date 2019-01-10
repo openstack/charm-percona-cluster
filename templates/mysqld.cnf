@@ -173,6 +173,10 @@ wsrep_log_conflicts
 wsrep_provider_options = {{ wsrep_provider_options }}
 {% endif %}
 
+{% if wsrep_slave_threads -%}
+wsrep_slave_threads = {{ wsrep_slave_threads }}
+{% endif %}
+
 #
 # * Performance Schema
 #
