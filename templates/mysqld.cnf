@@ -65,8 +65,10 @@ query_cache_size        = 16M
 #
 #
 # Error log - should be very few entries.
-#
-log_error = /var/log/mysql/error.log
+# favour syslog per https://bugs.launchpad.net/charm-percona-cluster/+bug/1812950
+# log_error = /var/log/mysql/error.log
+
+log_syslog = true
 
 #
 # The following can be used as easy to replay backup logs or for replication.
