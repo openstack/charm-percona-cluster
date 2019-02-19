@@ -1071,6 +1071,11 @@ def get_wsrep_provider_options():
     if config('gcs-fc-limit') is not None:
         wsrep_provider_options.append(
             'gcs.fc_limit={}'.format(config('gcs-fc-limit')))
+    if config('autoevict') is not None:
+        wsrep_provider_options.append(
+            'evs.auto_evict={}'.format(config('autoevict')))
+        wsrep_provider_options.append(
+            'evs.version=1')
 
     peer_timeout = config('peer-timeout')
     if peer_timeout and(not peer_timeout.startswith('PT') or

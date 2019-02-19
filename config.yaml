@@ -358,3 +358,16 @@ options:
       control message will be sent.  The fc_limit defaults to 16 transactions.
       This effectively means that this is as far as a given node can be behind
       committing transactions from the cluster.
+  autoevict:
+    type: int
+    default: 0
+    description: |
+      Number of entries allowed on delayed list until auto eviction takes place.
+      Setting value to 0 disables auto eviction. This setting enables autoeviction
+      of slow nodes. Implies 'evs.version=1'.
+      Related STATUS variables:
+      .
+      'wsrep_evs_delayed': Comma separated list of nodes that are considered delayed.
+                           The node format is <uuid>:<address>:<count>, where <count>
+                           is the number of entries on delayed list for that node.
+      'wsrep_evs_evict_list': List of UUIDs of the evicted nodes.
