@@ -194,7 +194,8 @@ def main(args):
         return s
     else:
         try:
-            action(args)
+            params = action_get()
+            action(params)
         except Exception as e:
             action_fail("Action {} failed: {}".format(action_name, str(e)))
 
