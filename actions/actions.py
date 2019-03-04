@@ -4,6 +4,7 @@ import os
 import sys
 import subprocess
 import traceback
+import MySQLdb
 from time import gmtime, strftime
 
 sys.path.append('hooks')
@@ -28,6 +29,78 @@ from percona_utils import (
     _get_password,
 )
 from percona_hooks import config_changed
+
+
+def create_user(params):
+
+    if not params['username']:
+        action_fail('No username specified')
+        return
+    if not params['password']:
+        action_fail('No password specified')
+        return
+    
+    rootpw = _get_password("root-password")
+    con = MySQLdb.connect(host = 'localhost', 
+                       user = 'root', 
+                       passwd = rootpw)
+    con.autocommit = True
+
+    cur = con.cursor()
+    cur.execute("""GRANT ALL PRIVILEGES ON *.* TO '{}'@'%' IDENTIFIED BY '{}';"""
+                    .format(params['username'], params['password']))
+    action_set(dict(result='User created'))
+
+def set_user_password(params):
+
+    if not params['username']:
+        action_fail('No username specified')
+        return
+    if not params['password']:
+        action_fail('No password specified')
+        return
+    rootpw = _get_password("root-password")
+    con = MySQLdb.connect(host = 'localhost', 
+                       user = 'root', 
+                       passwd = rootpw)
+    con.autocommit = True
+
+    cur = con.cursor()
+
+    cur.execute("""SELECT 1 FROM mysql.user WHERE user = '{}'"""
+            .format(params['username']))
+    if cur.fetchone()[0] == 0:
+        action_fail('User does not exist')
+        return
+    
+    cur.execute("""UPDATE mysql.user SET Password=PASSWORD('{}') WHERE user='{}'"""
+                    .format( params['password'], params['username']))
+    action_set(dict(result='User password updated'))
+
+
+def delete_user(params):
+
+    if not params['username']:
+        action_fail('No username specified')
+        return
+    
+    rootpw = _get_password("root-password")
+    con = MySQLdb.connect(host = 'localhost', 
+                       user = 'root', 
+                       passwd = rootpw)
+    con.autocommit = True
+
+    cur = con.cursor()
+    cur.execute("""SELECT 1 FROM mysql.user WHERE user = '{}'"""
+            .format(params['username']))
+    if cur.fetchone()[0] == 0:
+        action_fail('User does not exist')
+        return
+        
+    cur.execute("""DELETE FROM mysql.user WHERE User = '{}'"""
+            .format(params['username']))
+
+    action_set(dict(result='User deleted'))
 
 
 def pause(args):

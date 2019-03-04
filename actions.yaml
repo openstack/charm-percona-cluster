@@ -1,3 +1,41 @@
+create-user:
+  description: >
+    Creates a new superuser user within the instance
+  params:
+    username:
+      type: string
+      description: The username of the user to create
+    password:
+      type: string
+      description: The password of the user to create
+  required:
+    - username
+    - password
+
+set-user-password:
+  description: >
+    Reset a user's password
+  params:
+    username:
+      type: string
+      description: The username of the user to change password
+    password:
+      type: string
+      description: The new password to set for the user
+  required:
+    - username
+    - password
+
+delete-user:
+  description: >
+    Deletes an existing user within the instance
+  params:
+    username:
+      type: string
+      description: The username of the user to delete
+  required:
+    - username
+
 pause:
   description: Pause the MySQL service.
 resume:
