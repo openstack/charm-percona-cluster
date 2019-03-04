@@ -180,6 +180,7 @@ def backup(args):
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
 ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
+            "create-user": create_user, "delete-user": delete_user, "set-user-password": set_user_password,
            "complete-cluster-series-upgrade": complete_cluster_series_upgrade}
 
 
