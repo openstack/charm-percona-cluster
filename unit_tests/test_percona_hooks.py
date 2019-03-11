@@ -717,7 +717,7 @@ class TestConfigs(CharmTestCase):
         '''
         default_config = {}
         config = self._load_config()
-        for k, v in config.iteritems():
+        for k, v in config.items():
             if 'default' in v:
                 default_config[k] = v['default']
             else:

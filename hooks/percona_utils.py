@@ -147,13 +147,13 @@ def seeded():
 def mark_seeded():
     ''' Mark service unit as seeded '''
     with open(SEEDED_MARKER.format(data_dir=resolve_data_dir()),
-              'w') as seeded:
+              'wt') as seeded:
         seeded.write('done')
 
 
 def setup_percona_repo():
     ''' Configure service unit to use percona repositories '''
-    with open('/etc/apt/sources.list.d/percona.list', 'w') as sources:
+    with open('/etc/apt/sources.list.d/percona.list', 'wt') as sources:
         sources.write(REPO.format(release=lsb_release()['DISTRIB_CODENAME']))
     subprocess.check_call(['apt-key', 'add', KEY])
 
@@ -339,10 +339,12 @@ def configure_mysql_root_password(password):
     m_helper = get_db_helper()
     root_pass = m_helper.get_mysql_root_password(password)
     for package in packages:
-        dconf.stdin.write("%s %s/root_password password %s\n" %
-                          (package, package, root_pass))
-        dconf.stdin.write("%s %s/root_password_again password %s\n" %
-                          (package, package, root_pass))
+        dconf.stdin.write("{} {}/root_password password {}\n"
+                          .format(package, package, root_pass)
+                          .encode('ascii'))
+        dconf.stdin.write("{} {}/root_password_again password {}\n"
+                          .format(package, package, root_pass)
+                          .encode('ascii'))
     dconf.communicate()
     dconf.wait()
 
@@ -366,7 +368,7 @@ def update_hosts_file(map):
 
     See https://bugs.launchpad.net/galera/+bug/1130595 for some more info.
     """
-    with open(HOSTS_FILE, 'r') as hosts:
+    with open(HOSTS_FILE, 'rt') as hosts:
         lines = hosts.readlines()
 
     log("Updating %s with: %s (current: %s)" % (HOSTS_FILE, map, lines),
@@ -392,7 +394,7 @@ def update_hosts_file(map):
     lines += newlines
 
     with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
-        with open(tmpfile.name, 'w') as hosts:
+        with open(tmpfile.name, 'wt') as hosts:
             for line in lines:
                 hosts.write(line)
 
@@ -415,8 +417,7 @@ def _cmp(x, y):
 
 def unit_sorted(units):
     """Return a sorted list of unit names."""
-    return sorted(
-        units, lambda a, b: _cmp(int(a.split('/')[-1]), int(b.split('/')[-1])))
+    return sorted(units, key=lambda a: int(a.split('/')[-1]))
 
 
 def install_mysql_ocf():
@@ -1215,7 +1216,7 @@ def get_databases_to_replicate():
     except InvalidCharacters as e:
         raise InvalidDatabasesToReplicate(
             "The configuration setting databases-to-replicate is malformed. {}"
-            .format(e.message))
+            .format(str(e)))
     return databases_to_replicate
 
 

@@ -1,10 +1,22 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # TODO: Support changes to root and sstuser passwords
 import sys
 import json
 import os
 import socket
 import subprocess
+
+_path = os.path.dirname(os.path.realpath(__file__))
+_root = os.path.abspath(os.path.join(_path, '..'))
+
+
+def _add_path(path):
+    if path not in sys.path:
+        sys.path.insert(1, path)
+
+
+_add_path(_root)
+
 
 from charmhelpers.core.hookenv import (
     Hooks, UnregisteredHookError,
@@ -609,7 +621,7 @@ def cluster_changed():
     # NOTE(jamespage): deprecated - leader-election
     rdata = relation_get()
     inc_list = []
-    for attr in rdata.iterkeys():
+    for attr in rdata.keys():
         if attr not in ['hostname', 'private-address', 'cluster-address',
                         'public-address', 'ready']:
             inc_list.append(attr)
@@ -840,7 +852,7 @@ def shared_db_changed(relation_id=None, unit=None):
         # }
         #
         databases = {}
-        for k, v in settings.iteritems():
+        for k, v in settings.items():
             db = k.split('_')[0]
             x = '_'.join(k.split('_')[1:])
             if db not in databases:
