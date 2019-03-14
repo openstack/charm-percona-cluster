@@ -6,18 +6,7 @@ import subprocess
 import traceback
 from time import gmtime, strftime
 
-_path = os.path.dirname(os.path.realpath(__file__))
-_hooks = os.path.abspath(os.path.join(_path, '../hooks'))
-_root = os.path.abspath(os.path.join(_path, '..'))
-
-
-def _add_path(path):
-    if path not in sys.path:
-        sys.path.insert(1, path)
-
-_add_path(_hooks)
-_add_path(_root)
-
+sys.path.append('hooks')
 
 from charmhelpers.core.hookenv import (
     action_get,
