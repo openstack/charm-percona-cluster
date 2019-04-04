@@ -59,6 +59,7 @@ from charmhelpers.core.host import (
     service_stop,
     service_running,
     umount,
+    cmp_pkgrevno,
 )
 from charmhelpers.fetch import (
     apt_install,
@@ -178,7 +179,6 @@ class Pool(object):
         """
         # read-only is easy, writeback is much harder
         mode = get_cache_mode(self.service, cache_pool)
-        version = ceph_version()
         if mode == 'readonly':
             check_call(['ceph', '--id', self.service, 'osd', 'tier', 'cache-mode', cache_pool, 'none'])
             check_call(['ceph', '--id', self.service, 'osd', 'tier', 'remove', self.name, cache_pool])
@@ -186,7 +186,7 @@ class Pool(object):
         elif mode == 'writeback':
             pool_forward_cmd = ['ceph', '--id', self.service, 'osd', 'tier',
                                 'cache-mode', cache_pool, 'forward']
-            if version >= '10.1':
+            if cmp_pkgrevno('ceph-common', '10.1') >= 0:
                 # Jewel added a mandatory flag
                 pool_forward_cmd.append('--yes-i-really-mean-it')
 
@@ -196,7 +196,8 @@ class Pool(object):
             check_call(['ceph', '--id', self.service, 'osd', 'tier', 'remove-overlay', self.name])
             check_call(['ceph', '--id', self.service, 'osd', 'tier', 'remove', self.name, cache_pool])
 
-    def get_pgs(self, pool_size, percent_data=DEFAULT_POOL_WEIGHT):
+    def get_pgs(self, pool_size, percent_data=DEFAULT_POOL_WEIGHT,
+                device_class=None):
         """Return the number of placement groups to use when creating the pool.
 
         Returns the number of placement groups which should be specified when
@@ -229,6 +230,9 @@ class Pool(object):
             increased. NOTE: the default is primarily to handle the scenario
             where related charms requiring pools has not been upgraded to
             include an update to indicate their relative usage of the pools.
+        :param device_class: str. class of storage to use for basis of pgs
+            calculation; ceph supports nvme, ssd and hdd by default based
+            on presence of devices of each type in the deployment.
         :return: int.  The number of pgs to use.
         """
 
@@ -243,17 +247,20 @@ class Pool(object):
 
         # If the expected-osd-count is specified, then use the max between
         # the expected-osd-count and the actual osd_count
-        osd_list = get_osds(self.service)
+        osd_list = get_osds(self.service, device_class)
         expected = config('expected-osd-count') or 0
 
         if osd_list:
-            osd_count = max(expected, len(osd_list))
+            if device_class:
+                osd_count = len(osd_list)
+            else:
+                osd_count = max(expected, len(osd_list))
 
             # Log a message to provide some insight if the calculations claim
             # to be off because someone is setting the expected count and
             # there are more OSDs in reality. Try to make a proper guess
             # based upon the cluster itself.
-            if expected and osd_count != expected:
+            if not device_class and expected and osd_count != expected:
                 log("Found more OSDs than provided expected count. "
                     "Using the actual count instead", INFO)
         elif expected:
@@ -575,21 +582,24 @@ def remove_pool_snapshot(service, pool_name, snapshot_name):
         raise
 
 
-# max_bytes should be an int or long
-def set_pool_quota(service, pool_name, max_bytes):
+def set_pool_quota(service, pool_name, max_bytes=None, max_objects=None):
     """
-    :param service: six.string_types. The Ceph user name to run the command under
-    :param pool_name: six.string_types
-    :param max_bytes: int or long
-    :return: None.  Can raise CalledProcessError
+    :param service: The Ceph user name to run the command under
+    :type service: str
+    :param pool_name: Name of pool
+    :type pool_name: str
+    :param max_bytes: Maximum bytes quota to apply
+    :type max_bytes: int
+    :param max_objects: Maximum objects quota to apply
+    :type max_objects: int
+    :raises: subprocess.CalledProcessError
     """
-    # Set a byte quota on a RADOS pool in ceph.
-    cmd = ['ceph', '--id', service, 'osd', 'pool', 'set-quota', pool_name,
-           'max_bytes', str(max_bytes)]
-    try:
-        check_call(cmd)
-    except CalledProcessError:
-        raise
+    cmd = ['ceph', '--id', service, 'osd', 'pool', 'set-quota', pool_name]
+    if max_bytes:
+        cmd = cmd + ['max_bytes', str(max_bytes)]
+    if max_objects:
+        cmd = cmd + ['max_objects', str(max_objects)]
+    check_call(cmd)
 
 
 def remove_pool_quota(service, pool_name):
@@ -626,7 +636,8 @@ def remove_erasure_profile(service, profile_name):
 def create_erasure_profile(service, profile_name, erasure_plugin_name='jerasure',
                            failure_domain='host',
                            data_chunks=2, coding_chunks=1,
-                           locality=None, durability_estimator=None):
+                           locality=None, durability_estimator=None,
+                           device_class=None):
     """
     Create a new erasure code profile if one does not already exist for it.  Updates
     the profile if it exists. Please see http://docs.ceph.com/docs/master/rados/operations/erasure-code-profile/
@@ -640,10 +651,9 @@ def create_erasure_profile(service, profile_name, erasure_plugin_name='jerasure'
     :param coding_chunks: int
     :param locality: int
     :param durability_estimator: int
+    :param device_class: six.string_types
     :return: None.  Can raise CalledProcessError
     """
-    version = ceph_version()
-
     # Ensure this failure_domain is allowed by Ceph
     validator(failure_domain, six.string_types,
               ['chassis', 'datacenter', 'host', 'osd', 'pdu', 'pod', 'rack', 'region', 'room', 'root', 'row'])
@@ -654,11 +664,19 @@ def create_erasure_profile(service, profile_name, erasure_plugin_name='jerasure'
     if locality is not None and durability_estimator is not None:
         raise ValueError("create_erasure_profile should be called with k, m and one of l or c but not both.")
 
+    luminous_or_later = cmp_pkgrevno('ceph-common', '12.0.0') >= 0
     # failure_domain changed in luminous
-    if version and version >= '12.0.0':
+    if luminous_or_later:
         cmd.append('crush-failure-domain=' + failure_domain)
     else:
         cmd.append('ruleset-failure-domain=' + failure_domain)
+
+    # device class new in luminous
+    if luminous_or_later and device_class:
+        cmd.append('crush-device-class={}'.format(device_class))
+    else:
+        log('Skipping device class configuration (ceph < 12.0.0)',
+            level=DEBUG)
 
     # Add plugin specific information
     if locality is not None:
@@ -744,20 +762,26 @@ def pool_exists(service, name):
     return name in out.split()
 
 
-def get_osds(service):
+def get_osds(service, device_class=None):
     """Return a list of all Ceph Object Storage Daemons currently in the
-    cluster.
+    cluster (optionally filtered by storage device class).
+
+    :param device_class: Class of storage device for OSD's
+    :type device_class: str
     """
-    version = ceph_version()
-    if version and version >= '0.56':
+    luminous_or_later = cmp_pkgrevno('ceph-common', '12.0.0') >= 0
+    if luminous_or_later and device_class:
+        out = check_output(['ceph', '--id', service,
+                            'osd', 'crush', 'class',
+                            'ls-osd', device_class,
+                            '--format=json'])
+    else:
         out = check_output(['ceph', '--id', service,
                             'osd', 'ls',
                             '--format=json'])
-        if six.PY3:
-            out = out.decode('UTF-8')
-        return json.loads(out)
-
-    return None
+    if six.PY3:
+        out = out.decode('UTF-8')
+    return json.loads(out)
 
 
 def install():
@@ -811,7 +835,7 @@ def set_app_name_for_pool(client, pool, name):
 
     :raises: CalledProcessError if ceph call fails
     """
-    if ceph_version() >= '12.0.0':
+    if cmp_pkgrevno('ceph-common', '12.0.0') >= 0:
         cmd = ['ceph', '--id', client, 'osd', 'pool',
                'application', 'enable', pool, name]
         check_call(cmd)
@@ -1091,22 +1115,6 @@ def ensure_ceph_keyring(service, user=None, group=None,
     return True
 
 
-def ceph_version():
-    """Retrieve the local version of ceph."""
-    if os.path.exists('/usr/bin/ceph'):
-        cmd = ['ceph', '-v']
-        output = check_output(cmd)
-        if six.PY3:
-            output = output.decode('UTF-8')
-        output = output.split()
-        if len(output) > 3:
-            return output[2]
-        else:
-            return None
-    else:
-        return None
-
-
 class CephBrokerRq(object):
     """Ceph broker request.
 
@@ -1147,14 +1155,47 @@ class CephBrokerRq(object):
             'object-prefix-permissions': object_prefix_permissions})
 
     def add_op_create_pool(self, name, replica_count=3, pg_num=None,
-                           weight=None, group=None, namespace=None):
-        """Adds an operation to create a pool.
+                           weight=None, group=None, namespace=None,
+                           app_name=None, max_bytes=None, max_objects=None):
+        """DEPRECATED: Use ``add_op_create_replicated_pool()`` or
+                       ``add_op_create_erasure_pool()`` instead.
+        """
+        return self.add_op_create_replicated_pool(
+            name, replica_count=replica_count, pg_num=pg_num, weight=weight,
+            group=group, namespace=namespace, app_name=app_name,
+            max_bytes=max_bytes, max_objects=max_objects)
 
-        @param pg_num setting:  optional setting. If not provided, this value
-        will be calculated by the broker based on how many OSDs are in the
-        cluster at the time of creation. Note that, if provided, this value
-        will be capped at the current available maximum.
-        @param weight: the percentage of data the pool makes up
+    def add_op_create_replicated_pool(self, name, replica_count=3, pg_num=None,
+                                      weight=None, group=None, namespace=None,
+                                      app_name=None, max_bytes=None,
+                                      max_objects=None):
+        """Adds an operation to create a replicated pool.
+
+        :param name: Name of pool to create
+        :type name: str
+        :param replica_count: Number of copies Ceph should keep of your data.
+        :type replica_count: int
+        :param pg_num: Request specific number of Placement Groups to create
+                       for pool.
+        :type pg_num: int
+        :param weight: The percentage of data that is expected to be contained
+                       in the pool from the total available space on the OSDs.
+                       Used to calculate number of Placement Groups to create
+                       for pool.
+        :type weight: float
+        :param group: Group to add pool to
+        :type group: str
+        :param namespace: Group namespace
+        :type namespace: str
+        :param app_name: (Optional) Tag pool with application name.  Note that
+                         there is certain protocols emerging upstream with
+                         regard to meaningful application names to use.
+                         Examples are ``rbd`` and ``rgw``.
+        :type app_name: str
+        :param max_bytes: Maximum bytes quota to apply
+        :type max_bytes: int
+        :param max_objects: Maximum objects quota to apply
+        :type max_objects: int
         """
         if pg_num and weight:
             raise ValueError('pg_num and weight are mutually exclusive')
@@ -1162,7 +1203,41 @@ class CephBrokerRq(object):
         self.ops.append({'op': 'create-pool', 'name': name,
                          'replicas': replica_count, 'pg_num': pg_num,
                          'weight': weight, 'group': group,
-                         'group-namespace': namespace})
+                         'group-namespace': namespace, 'app-name': app_name,
+                         'max-bytes': max_bytes, 'max-objects': max_objects})
+
+    def add_op_create_erasure_pool(self, name, erasure_profile=None,
+                                   weight=None, group=None, app_name=None,
+                                   max_bytes=None, max_objects=None):
+        """Adds an operation to create a erasure coded pool.
+
+        :param name: Name of pool to create
+        :type name: str
+        :param erasure_profile: Name of erasure code profile to use.  If not
+                                set the ceph-mon unit handling the broker
+                                request will set its default value.
+        :type erasure_profile: str
+        :param weight: The percentage of data that is expected to be contained
+                       in the pool from the total available space on the OSDs.
+        :type weight: float
+        :param group: Group to add pool to
+        :type group: str
+        :param app_name: (Optional) Tag pool with application name.  Note that
+                         there is certain protocols emerging upstream with
+                         regard to meaningful application names to use.
+                         Examples are ``rbd`` and ``rgw``.
+        :type app_name: str
+        :param max_bytes: Maximum bytes quota to apply
+        :type max_bytes: int
+        :param max_objects: Maximum objects quota to apply
+        :type max_objects: int
+        """
+        self.ops.append({'op': 'create-pool', 'name': name,
+                         'pool-type': 'erasure',
+                         'erasure-profile': erasure_profile,
+                         'weight': weight,
+                         'group': group, 'app-name': app_name,
+                         'max-bytes': max_bytes, 'max-objects': max_objects})
 
     def set_ops(self, ops):
         """Set request ops to provided value.

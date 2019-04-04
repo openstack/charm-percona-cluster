@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from charmhelpers.core.hookenv import (
+    NoNetworkBinding,
     config,
     unit_get,
     service_name,
@@ -158,7 +159,7 @@ def resolve_address(endpoint_type=PUBLIC, override=True):
                     if is_address_in_network(bound_cidr, vip):
                         resolved_address = vip
                         break
-            except NotImplementedError:
+            except (NotImplementedError, NoNetworkBinding):
                 # If no net-splits configured and no support for extra
                 # bindings/network spaces so we expect a single vip
                 resolved_address = vips[0]
@@ -175,7 +176,7 @@ def resolve_address(endpoint_type=PUBLIC, override=True):
             #       configuration is not in use
             try:
                 resolved_address = network_get_primary_address(binding)
-            except NotImplementedError:
+            except (NotImplementedError, NoNetworkBinding):
                 resolved_address = fallback_addr
 
     if resolved_address is None:
