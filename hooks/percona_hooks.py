@@ -239,12 +239,16 @@ def render_config(hosts=None):
         # only set it for PXC 5.6.
         context['myisam_recover'] = 'BACKUP'
         context['wsrep_provider'] = '/usr/lib/libgalera_smm.so'
+        if 'wsrep_slave_threads' not in context:
+            context['wsrep_slave_threads'] = 1
     elif CompareHostReleases(lsb_release()['DISTRIB_CODENAME']) >= 'bionic':
         context['wsrep_provider'] = '/usr/lib/galera3/libgalera_smm.so'
         context['default_storage_engine'] = 'InnoDB'
         context['wsrep_log_conflicts'] = True
         context['innodb_autoinc_lock_mode'] = '2'
         context['pxc_strict_mode'] = config('pxc-strict-mode')
+        if 'wsrep_slave_threads' not in context:
+            context['wsrep_slave_threads'] = 48
 
     if config('databases-to-replicate'):
         context['databases_to_replicate'] = get_databases_to_replicate()
