@@ -110,6 +110,7 @@ from percona_utils import (
     is_bootstrapped,
     clustered_once,
     INITIAL_CLUSTERED_KEY,
+    INITIAL_CLIENT_UPDATE_KEY,
     is_leader_bootstrapped,
     get_wsrep_value,
     assess_status,
@@ -157,8 +158,6 @@ RES_MONITOR_PARAMS = ('params user="sstuser" password="%(sstpass)s" '
                       'cluster_type="pxc" '
                       'op monitor interval="1s" timeout="30s" '
                       'OCF_CHECK_LEVEL="1"')
-
-INITIAL_CLIENT_UPDATE_KEY = 'initial_client_update_done'
 
 MYSQL_SOCKET = "/var/run/mysqld/mysqld.sock"
 

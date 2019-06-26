@@ -6,7 +6,7 @@ import mock
 
 import percona_utils
 
-from test_utils import CharmTestCase
+from test_utils import CharmTestCase, patch_open
 
 os.environ['JUJU_UNIT_NAME'] = 'percona-cluster/2'
 
@@ -19,6 +19,8 @@ class UtilsTests(CharmTestCase):
         'related_units',
         'relation_get',
         'relation_set',
+        'get_db_helper',
+        'yaml',
     ]
 
     def setUp(self):
@@ -419,6 +421,57 @@ class UtilsTests(CharmTestCase):
         with self.assertRaises(Exception):
             percona_utils.check_for_socket("filename", exists=False)
         _time.sleep.assert_called_with(10)
+
+    def test_check_mysql_connection(self):
+        _db_helper = mock.MagicMock()
+        _db_helper.get_mysql_root_password.return_value = "password"
+        self.get_db_helper.return_value = _db_helper
+
+        _db_helper.connect.return_value = mock.MagicMock()
+        self.assertTrue(percona_utils.check_mysql_connection())
+
+        # The MySQLdb module is fully mocked out, including the
+        # OperationalError. Make OperationalError behave like an exception.
+        percona_utils.OperationalError = Exception
+        _db_helper.connect.side_effect = percona_utils.OperationalError
+        self.assertFalse(percona_utils.check_mysql_connection())
+
+    @mock.patch("percona_utils.resolve_data_dir")
+    @mock.patch("percona_utils.os")
+    def test_get_grstate_seqno(self, _os, _resolve_dd):
+        _resolve_dd.return_value = "/tmp"
+        _seqno = "25"
+        _os.path.exists.return_value = True
+        self.yaml.safe_load.return_value = {"seqno": _seqno}
+        with patch_open() as (_open, _file):
+            _open.return_value = _file
+            self.assertEqual(_seqno, percona_utils.get_grstate_seqno())
+
+    @mock.patch("percona_utils.resolve_data_dir")
+    @mock.patch("percona_utils.os")
+    def test_get_grstate_safe_to_bootstrap(self, _os, _resolve_dd):
+        _resolve_dd.return_value = "/tmp"
+        _bootstrap = "0"
+        _os.path.exists.return_value = True
+        self.yaml.safe_load.return_value = {"safe_to_bootstrap": _bootstrap}
+        with patch_open() as (_open, _file):
+            _open.return_value = _file
+            self.assertEqual(
+                _bootstrap, percona_utils.get_grstate_safe_to_bootstrap())
+
+    @mock.patch("percona_utils.resolve_data_dir")
+    @mock.patch("percona_utils.os")
+    def test_set_grstate_safe_to_bootstrap(self, _os, _resolve_dd):
+        _resolve_dd.return_value = "/tmp"
+        _bootstrap = "0"
+        _os.path.exists.return_value = True
+        self.yaml.safe_load.return_value = {"safe_to_bootstrap": _bootstrap}
+        with patch_open() as (_open, _file):
+            _open.return_value = _file
+            _file.write = mock.MagicMock()
+            percona_utils.set_grstate_safe_to_bootstrap()
+            self.yaml.dump.assert_called_once_with({"safe_to_bootstrap": 1})
+            _file.write.assert_called_once()
 
 
 class UtilsTestsStatus(CharmTestCase):

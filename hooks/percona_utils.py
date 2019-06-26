@@ -12,6 +12,7 @@ import six
 import uuid
 from functools import partial
 import time
+import yaml
 
 from charmhelpers.core.decorators import retry_on_exception
 from charmhelpers.core.host import (
@@ -84,6 +85,7 @@ SEEDED_MARKER = "{data_dir}/seeded"
 HOSTS_FILE = '/etc/hosts'
 DEFAULT_MYSQL_PORT = 3306
 INITIAL_CLUSTERED_KEY = 'initial-cluster-complete'
+INITIAL_CLIENT_UPDATE_KEY = 'initial_client_update_done'
 
 # NOTE(ajkavanagh) - this is 'required' for the pause/resume code for
 # maintenance mode, but is currently not populated as the
@@ -108,6 +110,11 @@ class InconsistentUUIDError(Exception):
 
 class DesyncedException(Exception):
     '''Raised if PXC unit is not in sync with its peers'''
+    pass
+
+
+class GRStateFileNotFound(Exception):
+    """Raised when the grstate file does not exist"""
     pass
 
 
@@ -678,6 +685,15 @@ def charm_check_func():
     if is_unit_upgrading_set():
         # Avoid looping through attempting to determine cluster_in_sync
         return ("blocked", "Unit upgrading.")
+
+    kvstore = kv()
+    # Using INITIAL_CLIENT_UPDATE_KEY as this is a step beyond merely
+    # clustered, but rather clustered and clients were previously notified.
+    if (kvstore.get(INITIAL_CLIENT_UPDATE_KEY, False) and
+            not check_mysql_connection()):
+        return ('blocked',
+                'MySQL is down. Sequence Number: {}. Safe To Bootstrap: {}'
+                .format(get_grstate_seqno(), get_grstate_safe_to_bootstrap()))
 
     @retry_on_exception(num_retries=10,
                         base_delay=2,
@@ -1452,3 +1468,79 @@ def list_replication_users():
                                   "User='replication';"):
         replication_users.append(result[0])
     return replication_users
+
+
+def check_mysql_connection():
+    """Check if local instance of mysql is accessible.
+
+    Attempt a connection to the local instance of mysql to determine if it is
+    running and accessible.
+
+    :side effect: Uses get_db_helper to execute a connection to the DB.
+    :returns: boolean
+    """
+
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+        return True
+    except OperationalError:
+        log("Could not connect to db", DEBUG)
+        return False
+
+
+def get_grstate_seqno():
+    """Get GR State safe sequence number.
+
+    Read the grstate yaml file to determine the sequence number for this
+    instance.
+
+    :returns: int Sequence Number
+    """
+
+    grstate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if os.path.exists(grstate_file):
+        with open(grstate_file, 'r') as f:
+            grstate = yaml.safe_load(f)
+        return grstate.get("seqno")
+
+
+def get_grstate_safe_to_bootstrap():
+    """Get GR State safe to bootstrap.
+
+    Read the grstate yaml file to determine if it is safe to bootstrap from
+    this instance.
+
+    :returns: int Safe to bootstrap 0 or 1
+    """
+
+    grstate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if os.path.exists(grstate_file):
+        with open(grstate_file, 'r') as f:
+            grstate = yaml.safe_load(f)
+        return grstate.get("safe_to_bootstrap")
+
+
+def set_grstate_safe_to_bootstrap():
+    """Set GR State safe to bootstrap.
+
+    Update the grstate yaml file to indicate it is safe to bootstrap from
+    this instance.
+
+    :side effect: Writes the grstate.dat file.
+    :raises GRStateFileNotFound: If grstate.dat file does not exist.
+    :returns: None
+    """
+
+    grstate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if not os.path.exists(grstate_file):
+        raise GRStateFileNotFound("{} file does not exist"
+                                  .format(grstate_file))
+    with open(grstate_file, 'r') as f:
+        grstate = yaml.safe_load(f)
+
+    # Force safe to bootstrap
+    grstate["safe_to_bootstrap"] = 1
+
+    with open(grstate_file, 'w') as f:
+        f.write(yaml.dump(grstate))

@@ -1,3 +1,4 @@
+import io
 import os
 import logging
 import unittest
@@ -125,17 +126,20 @@ class TestRelation(object):
 
 @contextmanager
 def patch_open():
-    '''Patch open() to allow mocking both open() itself and the file that is
+    """Patch open().
+
+    Patch open() to allow mocking both open() itself and the file that is
     yielded.
 
-    Yields the mock for "open" and "file", respectively.'''
+    Yields the mock for "open" and "file", respectively.
+    """
     mock_open = MagicMock(spec=open)
-    mock_file = MagicMock(spec=__file__)
+    mock_file = MagicMock(spec=io.FileIO)
 
     @contextmanager
     def stub_open(*args, **kwargs):
         mock_open(*args, **kwargs)
         yield mock_file
 
-    with patch('__builtin__.open', stub_open):
+    with patch('builtins.open', stub_open):
         yield mock_open, mock_file
