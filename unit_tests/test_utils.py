@@ -27,7 +27,7 @@ def load_config():
                       'of %s. ' % __file__)
         raise Exception
 
-    return yaml.safe_load(open(config).read())['options']
+    return yaml.safe_load(open(config, encoding="UTF-8").read())['options']
 
 
 def get_default_config():
@@ -37,7 +37,7 @@ def get_default_config():
     '''
     default_config = {}
     config = load_config()
-    for k, v in config.iteritems():
+    for k, v in config.items():
         if 'default' in v:
             default_config[k] = v['default']
         else:

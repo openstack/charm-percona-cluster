@@ -1,10 +1,22 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # TODO: Support changes to root and sstuser passwords
+import collections
 import sys
 import json
 import os
 import socket
 import subprocess
+
+_path = os.path.dirname(os.path.realpath(__file__))
+_root = os.path.abspath(os.path.join(_path, '..'))
+
+
+def _add_path(path):
+    if path not in sys.path:
+        sys.path.insert(1, path)
+
+_add_path(_root)
+
 
 from charmhelpers.core.hookenv import (
     Hooks, UnregisteredHookError,
@@ -531,7 +543,8 @@ def config_changed():
         # Empty hosts if cluster_series_upgrading
         if not clustered_once() or cluster_series_upgrading:
             hosts = []
-        log("Leader unit - bootstrap required=%s" % (not leader_bootstrapped),
+        log("Leader unit - bootstrap required={}"
+            .format(not leader_bootstrapped),
             DEBUG)
         render_config_restart_on_changed(hosts,
                                          bootstrap=not leader_bootstrapped)
@@ -598,7 +611,7 @@ def cluster_joined():
 
     relation_settings['cluster-address'] = get_cluster_host_ip()
 
-    log("Setting cluster relation: '%s'" % (relation_settings),
+    log("Setting cluster relation: '{}'".format(relation_settings),
         level=INFO)
     relation_set(relation_settings=relation_settings)
 
@@ -613,7 +626,7 @@ def cluster_changed():
     # NOTE(jamespage): deprecated - leader-election
     rdata = relation_get()
     inc_list = []
-    for attr in rdata.iterkeys():
+    for attr in rdata.keys():
         if attr not in ['hostname', 'private-address', 'cluster-address',
                         'public-address', 'ready']:
             inc_list.append(attr)
@@ -717,13 +730,13 @@ def get_db_host(client_hostname, interface='shared-db'):
                     if is_address_in_network(access_network, vip):
                         return vip
 
-                log("Unable to identify a VIP in the access-network '%s'" %
-                    (access_network), level=WARNING)
+                log("Unable to identify a VIP in the access-network '{}'"
+                    .format(access_network), level=WARNING)
             else:
                 return get_address_in_network(access_network)
         else:
-            log("Client address '%s' not in access-network '%s'" %
-                (client_ip, access_network), level=WARNING)
+            log("Client address '{}' not in access-network '{}'"
+                .format(client_ip, access_network), level=WARNING)
     else:
         try:
             # NOTE(jamespage)
@@ -755,10 +768,11 @@ def configure_db_for_hosts(hosts, database, username, db_helper):
     """Hosts may be a json-encoded list of hosts or a single hostname."""
     try:
         hosts = json.loads(hosts)
-        log("Multiple hostnames provided by relation: %s" % (', '.join(hosts)),
+        log("Multiple hostnames provided by relation: {}"
+            .format(', '.join(hosts)),
             level=DEBUG)
     except ValueError:
-        log("Single hostname provided by relation: %s" % (hosts),
+        log("Single hostname provided by relation: {}".format(hosts),
             level=DEBUG)
         hosts = [hosts]
 
@@ -791,7 +805,7 @@ def shared_db_changed(relation_id=None, unit=None):
     peer_store_and_set(relation_id=relation_id,
                        relation_settings={'access-network': access_network})
 
-    singleset = set(['database', 'username', 'hostname'])
+    singleset = {'database', 'username', 'hostname'}
     if singleset.issubset(settings):
         # Process a single database configuration
         hostname = settings['hostname']
@@ -805,8 +819,8 @@ def shared_db_changed(relation_id=None, unit=None):
             #       database access if remote unit has presented a
             #       hostname or ip address thats within the configured
             #       network cidr
-            log("Host '%s' not in access-network '%s' - ignoring" %
-                (normalized_address, access_network), level=INFO)
+            log("Host '{}' not in access-network '{}' - ignoring"
+                .format(normalized_address, access_network), level=INFO)
             return
 
         # NOTE: do this before querying access grants
@@ -843,16 +857,16 @@ def shared_db_changed(relation_id=None, unit=None):
         #    }
         # }
         #
-        databases = {}
-        for k, v in settings.iteritems():
+        databases = collections.OrderedDict()
+        for k, v in settings.items():
             db = k.split('_')[0]
             x = '_'.join(k.split('_')[1:])
             if db not in databases:
-                databases[db] = {}
+                databases[db] = collections.OrderedDict()
             databases[db][x] = v
 
-        allowed_units = {}
-        return_data = {}
+        allowed_units = collections.OrderedDict()
+        return_data = collections.OrderedDict()
         for db in databases:
             if singleset.issubset(databases[db]):
                 database = databases[db]['database']
@@ -876,10 +890,10 @@ def shared_db_changed(relation_id=None, unit=None):
                 a_units = db_helper.get_allowed_units(database, username,
                                                       relation_id=relation_id)
                 a_units = ' '.join(unit_sorted(a_units))
-                allowed_units_key = '%s_allowed_units' % (db)
+                allowed_units_key = '{}_allowed_units'.format(db)
                 allowed_units[allowed_units_key] = a_units
 
-                return_data['%s_password' % (db)] = password
+                return_data['{}_password'.format(db)] = password
                 return_data[allowed_units_key] = a_units
                 db_host = get_db_host(hostname)
 

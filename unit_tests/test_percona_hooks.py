@@ -637,7 +637,7 @@ class TestUpgradeCharm(CharmTestCase):
     ]
 
     def print_log(self, msg, level=None):
-        print('juju-log: %s: %s' % (level, msg))
+        print("juju-log: {}: {}".format(level, msg))
 
     def setUp(self):
         CharmTestCase.setUp(self, hooks, self.TO_PATCH)
@@ -709,7 +709,7 @@ class TestConfigs(CharmTestCase):
                           'of %s. ' % f)
             raise Exception
 
-        return yaml.safe_load(open(config).read())['options']
+        return yaml.safe_load(open(config, encoding="UTF-8").read())['options']
 
     def _get_default_config(self):
         '''Load default charm config from config.yaml return as a dict.
@@ -717,7 +717,7 @@ class TestConfigs(CharmTestCase):
         '''
         default_config = {}
         config = self._load_config()
-        for k, v in config.iteritems():
+        for k, v in config.items():
             if 'default' in v:
                 default_config[k] = v['default']
             else:

@@ -12,7 +12,6 @@ series:
   - bionic
   - cosmic
   - disco
-  - trusty
 extra-bindings:
   access:
 provides:

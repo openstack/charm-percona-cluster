@@ -1,10 +1,9 @@
+import collections
 import os
-import sys
 import tempfile
 
 import mock
 
-sys.modules['MySQLdb'] = mock.Mock()
 import percona_utils
 
 from test_utils import CharmTestCase
@@ -27,61 +26,73 @@ class UtilsTests(CharmTestCase):
 
     @mock.patch("percona_utils.log")
     def test_update_empty_hosts_file(self, mock_log):
-        map = {'1.2.3.4': 'my-host'}
+        _map = {'1.2.3.4': 'my-host'}
         with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
             percona_utils.HOSTS_FILE = tmpfile.name
             percona_utils.HOSTS_FILE = tmpfile.name
-            percona_utils.update_hosts_file(map)
+            percona_utils.update_hosts_file(_map)
 
-        with open(tmpfile.name, 'r') as fd:
+        with open(tmpfile.name, 'r', encoding="UTF-8") as fd:
             lines = fd.readlines()
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0], "%s %s\n" % (map.items()[0]))
+        self.assertEqual(lines[0],
+                         "{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
 
     @mock.patch("percona_utils.log")
     def test_update_hosts_file_w_dup(self, mock_log):
-        map = {'1.2.3.4': 'my-host'}
+        _map = {'1.2.3.4': 'my-host'}
         with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
             percona_utils.HOSTS_FILE = tmpfile.name
 
-            with open(tmpfile.name, 'w') as fd:
-                fd.write("%s %s\n" % (map.items()[0]))
+            with open(tmpfile.name, 'w', encoding="UTF-8") as fd:
+                fd.write("{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
 
-            percona_utils.update_hosts_file(map)
+            percona_utils.update_hosts_file(_map)
 
-        with open(tmpfile.name, 'r') as fd:
+        with open(tmpfile.name, 'r', encoding="UTF-8") as fd:
             lines = fd.readlines()
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0], "%s %s\n" % (map.items()[0]))
+        self.assertEqual(lines[0],
+                         "{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
 
     @mock.patch("percona_utils.log")
     def test_update_hosts_file_entry(self, mock_log):
         altmap = {'1.1.1.1': 'alt-host'}
-        map = {'1.1.1.1': 'hostA',
-               '2.2.2.2': 'hostB',
-               '3.3.3.3': 'hostC',
-               '4.4.4.4': 'hostD'}
+        _map = collections.OrderedDict()
+        _map['1.1.1.1'] = 'hostA'
+        _map['2.2.2.2'] = 'hostB'
+        _map['3.3.3.3'] = 'hostC'
+        _map['4.4.4.4'] = 'hostD'
         with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
             percona_utils.HOSTS_FILE = tmpfile.name
 
-            with open(tmpfile.name, 'w') as fd:
+            with open(tmpfile.name, 'w', encoding="UTF-8") as fd:
                 fd.write("#somedata\n")
-                fd.write("%s %s\n" % (altmap.items()[0]))
+                fd.write("{} {}\n".format(list(altmap.keys())[0],
+                                          list(altmap.values())[0]))
 
-            percona_utils.update_hosts_file(map)
+            percona_utils.update_hosts_file(_map)
 
-        with open(percona_utils.HOSTS_FILE, 'r') as fd:
+        with open(percona_utils.HOSTS_FILE, 'r', encoding="UTF-8") as fd:
             lines = fd.readlines()
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 5)
+        print("XXX", lines)
         self.assertEqual(lines[0], "#somedata\n")
-        self.assertEqual(lines[1], "%s %s\n" % (map.items()[0]))
-        self.assertEqual(lines[4], "%s %s\n" % (map.items()[3]))
+        self.assertEqual(lines[1],
+                         "{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
+        self.assertEqual(lines[4],
+                         "{} {}\n".format(list(_map.keys())[3],
+                                          list(_map.values())[3]))
 
     @mock.patch("percona_utils.get_cluster_host_ip")
     @mock.patch("percona_utils.log")
@@ -885,7 +896,7 @@ class TestUpdateBootstrapUUID(CharmTestCase):
         self.log.side_effect = self.juju_log
 
     def juju_log(self, msg, level=None):
-        print('juju-log %s: %s' % (level, msg))
+        print("juju-log {}: {}".format(level, msg))
 
     def test_no_bootstrap_uuid(self):
         self.leader_get.return_value = None

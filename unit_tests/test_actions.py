@@ -1,14 +1,7 @@
-import sys
 import mock
 from mock import patch
 
 from test_utils import CharmTestCase
-
-# python-apt is not installed as part of test-requirements but is imported by
-# some charmhelpers modules so create a fake import.
-sys.modules['apt'] = mock.Mock()
-sys.modules['MySQLdb'] = mock.Mock()
-
 
 # we have to patch out harden decorator because hooks/percona_hooks.py gets
 # imported via actions.py and will freak out if it trys to run in the context
@@ -18,7 +11,7 @@ with patch('percona_utils.register_configs') as configs, \
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
     configs.return_value = 'test-config'
-    import actions
+    from actions import actions
 
 
 class PauseTestCase(CharmTestCase):
@@ -39,7 +32,7 @@ class ResumeTestCase(CharmTestCase):
             actions, ["resume_unit_helper"])
 
     def test_pauses_services(self):
-        with patch('actions.config_changed') as config_changed:
+        with patch('actions.actions.config_changed') as config_changed:
             actions.resume([])
             self.resume_unit_helper.assert_called_once_with('test-config')
             config_changed.assert_called_once_with()

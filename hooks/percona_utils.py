@@ -1,4 +1,5 @@
 ''' General utilities for percona '''
+import collections
 import subprocess
 from subprocess import Popen, PIPE
 import socket
@@ -101,8 +102,8 @@ class InconsistentUUIDError(Exception):
     """Raised when the leader and the unit have different UUIDs set"""
     def __init__(self, leader_uuid, unit_uuid):
         super(InconsistentUUIDError, self).__init__(
-            "Leader UUID ('%s') != Unit UUID ('%s')" % (leader_uuid,
-                                                        unit_uuid))
+            "Leader UUID ('{}') != Unit UUID ('{}')"
+            .format(leader_uuid, unit_uuid))
 
 
 class DesyncedException(Exception):
@@ -147,14 +148,16 @@ def seeded():
 def mark_seeded():
     ''' Mark service unit as seeded '''
     with open(SEEDED_MARKER.format(data_dir=resolve_data_dir()),
-              'w') as seeded:
+              'w', encoding="utf-8") as seeded:
         seeded.write('done')
 
 
 def setup_percona_repo():
     ''' Configure service unit to use percona repositories '''
     with open('/etc/apt/sources.list.d/percona.list', 'w') as sources:
-        sources.write(REPO.format(release=lsb_release()['DISTRIB_CODENAME']))
+        sources.write(
+            REPO.format(
+                release=lsb_release()['DISTRIB_CODENAME']).encode('utf-8'))
     subprocess.check_call(['apt-key', 'add', KEY])
 
 
@@ -167,7 +170,7 @@ def resolve_hostname_to_ip(hostname):
     try:
         import dns.resolver
     except ImportError:
-        apt_install(filter_installed_packages(['python-dnspython']),
+        apt_install(filter_installed_packages(['python3-dnspython']),
                     fatal=True)
         import dns.resolver
 
@@ -211,7 +214,7 @@ def is_sufficient_peers():
 
         if units < min_size:
             log("Insufficient number of peer units to form cluster "
-                "(expected=%s, got=%s)" % (min_size, units), level=INFO)
+                "(expected={}, got={})".format(min_size, units), level=INFO)
             return False
         else:
             log("Sufficient number of peer units to form cluster {}"
@@ -238,7 +241,7 @@ def get_cluster_hosts():
     @side_effect update_hosts_file called for IPv6 hostname resolution
     @returns list of hosts
     """
-    hosts_map = {}
+    hosts_map = collections.OrderedDict()
 
     local_cluster_address = get_cluster_host_ip()
 
@@ -263,8 +266,8 @@ def get_cluster_hosts():
                         (unit, hostname, cluster_address), level=DEBUG)
                     continue
                 else:
-                    log("(unit=%s) hostname '%s' provided by cluster relation "
-                        "for addr %s" % (unit, hostname, cluster_address),
+                    log("(unit=%s) hostname '{}' provided by cluster relation "
+                        "for addr {}".format(unit, hostname, cluster_address),
                         level=DEBUG)
 
                 hosts_map[cluster_address] = hostname
@@ -287,8 +290,7 @@ def get_cluster_hosts():
         update_hosts_file(hosts_map)
 
     # Return a sorted list to avoid uneccessary restarts
-    hosts.sort()
-    return hosts
+    return sorted(hosts)
 
 
 SQL_SST_USER_SETUP = ("GRANT {permissions} ON *.* "
@@ -339,10 +341,12 @@ def configure_mysql_root_password(password):
     m_helper = get_db_helper()
     root_pass = m_helper.get_mysql_root_password(password)
     for package in packages:
-        dconf.stdin.write("%s %s/root_password password %s\n" %
-                          (package, package, root_pass))
-        dconf.stdin.write("%s %s/root_password_again password %s\n" %
-                          (package, package, root_pass))
+        dconf.stdin.write("{} {}/root_password password {}\n"
+                          .format(package, package, root_pass)
+                          .encode("utf-8"))
+        dconf.stdin.write("{} {}/root_password_again password {}\n"
+                          .format(package, package, root_pass)
+                          .encode("utf-8"))
     dconf.communicate()
     dconf.wait()
 
@@ -359,21 +363,21 @@ def relation_clear(r_id=None):
                  **settings)
 
 
-def update_hosts_file(map):
+def update_hosts_file(_map):
     """Percona does not currently like ipv6 addresses so we need to use dns
     names instead. In order to make them resolvable we ensure they are  in
     /etc/hosts.
 
     See https://bugs.launchpad.net/galera/+bug/1130595 for some more info.
     """
-    with open(HOSTS_FILE, 'r') as hosts:
+    with open(HOSTS_FILE, 'r', encoding="utf-8") as hosts:
         lines = hosts.readlines()
 
-    log("Updating %s with: %s (current: %s)" % (HOSTS_FILE, map, lines),
+    log("Updating {} with: {} (current: {})".format(HOSTS_FILE, _map, lines),
         level=DEBUG)
 
     newlines = []
-    for ip, hostname in map.items():
+    for ip, hostname in list(_map.items()):
         if not ip or not hostname:
             continue
 
@@ -383,16 +387,17 @@ def update_hosts_file(map):
             if len(line) < 2 or not (_line[0] == ip or hostname in _line[1:]):
                 keepers.append(line)
             else:
-                log("Marking line '%s' for update or removal" % (line.strip()),
+                log("Marking line '{}' for update or removal"
+                    .format(line.strip()),
                     level=DEBUG)
 
         lines = keepers
-        newlines.append("%s %s\n" % (ip, hostname))
+        newlines.append("{} {}\n".format(ip, hostname))
 
     lines += newlines
 
     with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
-        with open(tmpfile.name, 'w') as hosts:
+        with open(tmpfile.name, 'w', encoding="utf-8") as hosts:
             for line in lines:
                 hosts.write(line)
 
@@ -408,15 +413,10 @@ def assert_charm_supports_ipv6():
                         "versions less than Trusty 14.04")
 
 
-def _cmp(x, y):
-    """Shim for py2 py3 compat."""
-    return (x > y) - (x < y)
-
-
 def unit_sorted(units):
     """Return a sorted list of unit names."""
     return sorted(
-        units, lambda a, b: _cmp(int(a.split('/')[-1]), int(b.split('/')[-1])))
+        units, key=lambda a: int(a.split('/')[-1]))
 
 
 def install_mysql_ocf():
@@ -431,7 +431,8 @@ def install_mysql_ocf():
             log('Installing %s' % dest_file, level='INFO')
             shutil.copy(src_file, dest_file)
         else:
-            log("'%s' already exists, skipping" % dest_file, level='INFO')
+            log("'{}' already exists, skipping"
+                .format(dest_file), level='INFO')
 
 
 def get_wsrep_value(key):
@@ -445,7 +446,7 @@ def get_wsrep_value(key):
     cursor = m_helper.connection.cursor()
     ret = None
     try:
-        cursor.execute("show status like '%s'" % (key))
+        cursor.execute("show status like '{}'".format(key))
         ret = cursor.fetchall()
     except:
         log("Failed to get '%s'", ERROR)
@@ -630,14 +631,14 @@ def update_bootstrap_uuid():
         raise LeaderNoBootstrapUUIDError()
 
     wsrep_ready = get_wsrep_value('wsrep_ready') or ""
-    log("wsrep_ready: '%s'" % wsrep_ready, DEBUG)
+    log("wsrep_ready: '{}'".format(wsrep_ready), DEBUG)
     if wsrep_ready.lower() in ['on', 'ready']:
         cluster_state_uuid = get_wsrep_value('wsrep_cluster_state_uuid')
     else:
         cluster_state_uuid = None
 
     if not cluster_state_uuid:
-        log("UUID is empty: '%s'" % cluster_state_uuid, level=DEBUG)
+        log("UUID is empty: '{}'".format(cluster_state_uuid), level=DEBUG)
         return False
     elif lead_cluster_state_uuid != cluster_state_uuid:
         # this may mean 2 things:
@@ -851,8 +852,8 @@ def create_binlogs_directory():
     binlogs_directory = os.path.dirname(config('binlogs-path'))
     data_dir = resolve_data_dir() + '/'
     if binlogs_directory.startswith(data_dir):
-        raise Exception("Configured binlogs directory (%s) must not be inside "
-                        "mysql data dir" % (binlogs_directory))
+        raise Exception("Configured binlogs directory ({}) must not be inside "
+                        "mysql data dir".format(binlogs_directory))
 
     if not os.path.isdir(binlogs_directory):
         mkdir(binlogs_directory, 'mysql', 'mysql', 0o750)
@@ -917,7 +918,7 @@ def cluster_ready():
     if int(min_cluster_size) == 1:
         return seeded()
 
-    peers = {}
+    peers = collections.OrderedDict()
     for relation_id in relation_ids('cluster'):
         units = related_units(relation_id) or []
         if local_unit() not in units:
@@ -1025,7 +1026,8 @@ def update_root_password():
         m_helper.connect(user='root', password=new_root_passwd)
         m_helper.execute('select 1;')
     except OperationalError as ex:
-        log("Error connecting using new password: %s" % str(ex), level=DEBUG)
+        log("Error connecting using new password: {}"
+            .format(str(ex)), level=DEBUG)
         log(('Cannot connect using new password, not updating password in '
              'the relation'), level=WARNING)
         return
@@ -1200,7 +1202,7 @@ def get_databases_to_replicate():
     entries = config('databases-to-replicate').strip().split(';')
     try:
         for entry in entries:
-            databases_and_tables = {}
+            databases_and_tables = collections.OrderedDict()
             entry_split = entry.split(':')
             databases_and_tables['database'] = (
                 check_invalid_chars(entry_split[0]))
@@ -1215,7 +1217,7 @@ def get_databases_to_replicate():
     except InvalidCharacters as e:
         raise InvalidDatabasesToReplicate(
             "The configuration setting databases-to-replicate is malformed. {}"
-            .format(e.message))
+            .format(e))
     return databases_to_replicate
 
 
@@ -1244,9 +1246,9 @@ def check_invalid_chars(data, bad_chars_re="[\^\\/?%*:|\"'<>., ]"):
     for data_string in data_strings:
         m = re.search(bad_chars_re, data_string)
         if m:
-            raise(InvalidCharacters(
+            raise InvalidCharacters(
                 "Invalid character '{}' in '{}'"
-                .format(m.group(0), data_string)))
+                .format(m.group(0), data_string))
     return data
 
 
