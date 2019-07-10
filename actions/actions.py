@@ -15,6 +15,7 @@ def _add_path(path):
     if path not in sys.path:
         sys.path.insert(1, path)
 
+
 _add_path(_hooks)
 _add_path(_root)
 
@@ -32,13 +33,8 @@ from charmhelpers.core.host import (
     lsb_release,
 )
 
-from percona_utils import (
-    pause_unit_helper,
-    resume_unit_helper,
-    register_configs,
-    _get_password,
-)
-from percona_hooks import config_changed
+import percona_utils
+import percona_hooks
 
 
 def pause(args):
@@ -46,7 +42,7 @@ def pause(args):
 
     @raises Exception should the service fail to stop.
     """
-    pause_unit_helper(register_configs())
+    percona_utils.pause_unit_helper(percona_utils.register_configs())
 
 
 def resume(args):
@@ -54,10 +50,10 @@ def resume(args):
 
     @raises Exception should the service fail to start.
     """
-    resume_unit_helper(register_configs())
+    percona_utils.resume_unit_helper(percona_utils.register_configs())
     # NOTE(ajkavanagh) - we force a config_changed pseudo-hook to see if the
     # unit needs to bootstrap or restart it's services here.
-    config_changed()
+    percona_hooks.config_changed()
 
 
 def complete_cluster_series_upgrade(args):
@@ -71,14 +67,14 @@ def complete_cluster_series_upgrade(args):
         # Unset cluster_series_upgrading
         leader_set(cluster_series_upgrading="")
         leader_set(cluster_series_upgrade_leader="")
-    config_changed()
+    percona_hooks.config_changed()
 
 
 def backup(args):
     basedir = (action_get("basedir")).lower()
     compress = action_get("compress")
     incremental = action_get("incremental")
-    sstpw = _get_password("sst-password")
+    sstpw = percona_utils._get_password("sst-password")
     optionlist = []
 
     # innobackupex will not create recursive dirs that do not already exist,
@@ -115,10 +111,35 @@ def backup(args):
                     "and check the status of the database")
 
 
+def bootstrap_pxc(args):
+    try:
+        # Force safe to bootstrap
+        percona_utils.set_grstate_safe_to_bootstrap()
+        # Boostrap this node
+        percona_utils.bootstrap_pxc()
+    except (percona_utils.GRStateFileNotFound, OSError) as e:
+        action_set({
+            'output': e.output,
+            'return-code': e.returncode})
+        action_fail("The GRState file does not exist or cannot be written to.")
+    except (subprocess.CalledProcessError, Exception) as e:
+        action_set({
+            'output': e.output,
+            'return-code': e.returncode,
+            'traceback': traceback.format_exc()})
+        action_fail("The bootstrap-pxc failed. "
+                    "See traceback in show-action-output")
+    action_set({
+        'output': "Bootstrap succeded. "
+                  "Wait for the other units to run update-status"})
+    percona_utils.assess_status(percona_utils.register_configs())
+
+
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
 ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
-           "complete-cluster-series-upgrade": complete_cluster_series_upgrade}
+           "complete-cluster-series-upgrade": complete_cluster_series_upgrade,
+           "bootstrap-pxc": bootstrap_pxc}
 
 
 def main(args):
