@@ -29,6 +29,8 @@ bootstrap-pxc:
     Bootstrap this unit of Percona.
     *WARNING* This action will bootstrap this unit of Percona cluster. This
     should only occur in a recovery scenario. Make sure this unit has the
-    highest sequence number in grstate.dat or data loss may occur.
+    highest sequence number in grastate.dat or data loss may occur.
     See upstream Percona documentation for context
     https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/
+notify-bootstrapped:
+   descripttion: Notify the cluster of the new bootstrap uuid.

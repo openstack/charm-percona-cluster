@@ -106,6 +106,7 @@ from percona_utils import (
     get_db_helper,
     mark_seeded, seeded,
     install_mysql_ocf,
+    maybe_notify_bootstrapped,
     notify_bootstrapped,
     is_bootstrapped,
     clustered_once,
@@ -145,6 +146,7 @@ from percona_utils import (
     get_slave_status,
     delete_replication_user,
     list_replication_users,
+    check_mysql_connection,
 )
 
 from charmhelpers.core.unitdata import kv
@@ -331,7 +333,8 @@ def render_config_restart_on_changed(hosts, bootstrap=False):
 def update_client_db_relations():
     """ Upate client db relations IFF ready
     """
-    if leader_node_is_ready() or client_node_is_ready():
+    if ((leader_node_is_ready() or
+            client_node_is_ready()) and check_mysql_connection()):
         for r_id in relation_ids('shared-db'):
             for unit in related_units(r_id):
                 shared_db_changed(r_id, unit)
@@ -632,6 +635,8 @@ def cluster_changed():
 
     peer_echo(includes=inc_list)
     # NOTE(jamespage): deprecated - leader-election
+
+    maybe_notify_bootstrapped()
 
     cluster_joined()
     config_changed()
@@ -951,6 +956,9 @@ def ha_relation_changed():
 @hooks.hook('leader-settings-changed')
 def leader_settings_changed():
     '''Re-trigger install once leader has seeded passwords into install'''
+
+    maybe_notify_bootstrapped()
+
     config_changed()
     # NOTE(tkurek): re-set 'master' relation data
     if relation_ids('master'):

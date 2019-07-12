@@ -14,6 +14,8 @@ os.environ['JUJU_UNIT_NAME'] = 'percona-cluster/2'
 class UtilsTests(CharmTestCase):
     TO_PATCH = [
         'config',
+        'kv',
+        'leader_get',
         'log',
         'relation_ids',
         'related_units',
@@ -87,7 +89,6 @@ class UtilsTests(CharmTestCase):
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 5)
-        print("XXX", lines)
         self.assertEqual(lines[0], "#somedata\n")
         self.assertEqual(lines[1],
                          "{} {}\n".format(list(_map.keys())[0],
@@ -438,18 +439,18 @@ class UtilsTests(CharmTestCase):
 
     @mock.patch("percona_utils.resolve_data_dir")
     @mock.patch("percona_utils.os")
-    def test_get_grstate_seqno(self, _os, _resolve_dd):
+    def test_get_grastate_seqno(self, _os, _resolve_dd):
         _resolve_dd.return_value = "/tmp"
         _seqno = "25"
         _os.path.exists.return_value = True
         self.yaml.safe_load.return_value = {"seqno": _seqno}
         with patch_open() as (_open, _file):
             _open.return_value = _file
-            self.assertEqual(_seqno, percona_utils.get_grstate_seqno())
+            self.assertEqual(_seqno, percona_utils.get_grastate_seqno())
 
     @mock.patch("percona_utils.resolve_data_dir")
     @mock.patch("percona_utils.os")
-    def test_get_grstate_safe_to_bootstrap(self, _os, _resolve_dd):
+    def test_get_grastate_safe_to_bootstrap(self, _os, _resolve_dd):
         _resolve_dd.return_value = "/tmp"
         _bootstrap = "0"
         _os.path.exists.return_value = True
@@ -457,11 +458,11 @@ class UtilsTests(CharmTestCase):
         with patch_open() as (_open, _file):
             _open.return_value = _file
             self.assertEqual(
-                _bootstrap, percona_utils.get_grstate_safe_to_bootstrap())
+                _bootstrap, percona_utils.get_grastate_safe_to_bootstrap())
 
     @mock.patch("percona_utils.resolve_data_dir")
     @mock.patch("percona_utils.os")
-    def test_set_grstate_safe_to_bootstrap(self, _os, _resolve_dd):
+    def test_set_grastate_safe_to_bootstrap(self, _os, _resolve_dd):
         _resolve_dd.return_value = "/tmp"
         _bootstrap = "0"
         _os.path.exists.return_value = True
@@ -469,9 +470,49 @@ class UtilsTests(CharmTestCase):
         with patch_open() as (_open, _file):
             _open.return_value = _file
             _file.write = mock.MagicMock()
-            percona_utils.set_grstate_safe_to_bootstrap()
+            percona_utils.set_grastate_safe_to_bootstrap()
             self.yaml.dump.assert_called_once_with({"safe_to_bootstrap": 1})
             _file.write.assert_called_once()
+
+    @mock.patch("percona_utils.check_mysql_connection")
+    @mock.patch("percona_utils.get_wsrep_value")
+    @mock.patch("percona_utils.notify_bootstrapped")
+    def test_maybe_notify_bootstrapped(
+            self, _notify_bootstrapped,
+            _get_wsrep_value, _check_mysql_connection):
+        kvstore = mock.MagicMock()
+        kvstore.get.return_value = True
+        self.kv.return_value = kvstore
+
+        _check_mysql_connection.return_value = False
+
+        _uuid = "uuid-uuid"
+        self.leader_get.return_value = _uuid
+        _get_wsrep_value.return_value = _uuid
+
+        # mysql not runnig
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_not_called()
+
+        # No clients initialized
+        _check_mysql_connection.return_value = True
+        kvstore.get.return_value = False
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_not_called()
+
+        # Differing UUID
+        _check_mysql_connection.return_value = True
+        kvstore.get.return_value = True
+        _get_wsrep_value.return_value = "not-the-same-uuid"
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_not_called()
+
+        # Differing UUID
+        _check_mysql_connection.return_value = True
+        kvstore.get.return_value = True
+        _get_wsrep_value.return_value = _uuid
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_called_once_with(cluster_uuid=_uuid)
 
 
 class UtilsTestsStatus(CharmTestCase):
