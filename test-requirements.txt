@@ -27,3 +27,6 @@ git+https://github.com/juju/charm-helpers.git#egg=charmhelpers
 # NOTE: workaround for 14.04 pip/tox
 pytz
 pyudev  # for ceph-* charm unit tests (not mocked?)
+git+https://github.com/openstack-charmers/zaza.git#egg=zaza;python_version>='3.0'
+git+https://github.com/openstack-charmers/zaza-openstack-tests.git#egg=zaza.openstack
+
