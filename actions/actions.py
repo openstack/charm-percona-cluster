@@ -112,16 +112,28 @@ def backup(args):
 
 
 def bootstrap_pxc(args):
+    """ Force a bootstrap on this node
+
+    This action will run bootstrap-pxc on this node bootstrapping the cluster.
+    This action should only be run after a cold start requiring a bootstrap.
+    This action should only be run on the node with the highest sequence number
+    as displayed in workgoup status and found in grastate.dat.
+    If this unit has the highest sequence number and is not the juju leader
+    node, a subsequent action run of notify-bootstrapped is required.
+    """
+
     try:
         # Force safe to bootstrap
-        percona_utils.set_grstate_safe_to_bootstrap()
+        percona_utils.set_grastate_safe_to_bootstrap()
         # Boostrap this node
         percona_utils.bootstrap_pxc()
-    except (percona_utils.GRStateFileNotFound, OSError) as e:
+        percona_utils.notify_bootstrapped()
+    except (percona_utils.GRAStateFileNotFound, OSError) as e:
         action_set({
             'output': e.output,
             'return-code': e.returncode})
-        action_fail("The GRState file does not exist or cannot be written to.")
+        action_fail("The GRAState file does not exist or cannot "
+                    "be written to.")
     except (subprocess.CalledProcessError, Exception) as e:
         action_set({
             'output': e.output,
@@ -130,16 +142,27 @@ def bootstrap_pxc(args):
         action_fail("The bootstrap-pxc failed. "
                     "See traceback in show-action-output")
     action_set({
-        'output': "Bootstrap succeded. "
+        'output': "Bootstrap succeeded. "
                   "Wait for the other units to run update-status"})
     percona_utils.assess_status(percona_utils.register_configs())
+
+
+def notify_bootstrapped(args):
+    """Notify the cluster of the new bootstrap cluster UUID.
+
+    As a consequence of timing, this action will often need to be executed
+    after the bootstrap-pxc action. It will need to be run on a different unit
+    than was bootstrap-pxc was executed on.
+    """
+    percona_utils.notify_bootstrapped()
 
 
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
 ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
            "complete-cluster-series-upgrade": complete_cluster_series_upgrade,
-           "bootstrap-pxc": bootstrap_pxc}
+           "bootstrap-pxc": bootstrap_pxc,
+           "notify-bootstrapped": notify_bootstrapped}
 
 
 def main(args):

@@ -113,8 +113,8 @@ class DesyncedException(Exception):
     pass
 
 
-class GRStateFileNotFound(Exception):
-    """Raised when the grstate file does not exist"""
+class GRAStateFileNotFound(Exception):
+    """Raised when the grastate file does not exist"""
     pass
 
 
@@ -548,8 +548,9 @@ def is_bootstrapped():
                 DEBUG)
             return False
         elif len(set(uuids)) > 1:
-            raise Exception("Found inconsistent bootstrap uuids: "
-                            "{}".format((uuids)))
+            log("Found inconsistent bootstrap uuids: "
+                "{}".format(uuids), level=WARNING)
+            return False
         else:
             log("All {} percona units reporting clustered".format(min_size),
                 DEBUG)
@@ -693,7 +694,8 @@ def charm_check_func():
             not check_mysql_connection()):
         return ('blocked',
                 'MySQL is down. Sequence Number: {}. Safe To Bootstrap: {}'
-                .format(get_grstate_seqno(), get_grstate_safe_to_bootstrap()))
+                .format(get_grastate_seqno(),
+                        get_grastate_safe_to_bootstrap()))
 
     @retry_on_exception(num_retries=10,
                         base_delay=2,
@@ -1489,58 +1491,89 @@ def check_mysql_connection():
         return False
 
 
-def get_grstate_seqno():
+def get_grastate_seqno():
     """Get GR State safe sequence number.
 
-    Read the grstate yaml file to determine the sequence number for this
+    Read the grastate yaml file to determine the sequence number for this
     instance.
 
     :returns: int Sequence Number
     """
 
-    grstate_file = os.path.join(resolve_data_dir(), "grastate.dat")
-    if os.path.exists(grstate_file):
-        with open(grstate_file, 'r') as f:
-            grstate = yaml.safe_load(f)
-        return grstate.get("seqno")
+    grastate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if os.path.exists(grastate_file):
+        with open(grastate_file, 'r') as f:
+            grastate = yaml.safe_load(f)
+        return grastate.get("seqno")
 
 
-def get_grstate_safe_to_bootstrap():
+def get_grastate_safe_to_bootstrap():
     """Get GR State safe to bootstrap.
 
-    Read the grstate yaml file to determine if it is safe to bootstrap from
+    Read the grastate yaml file to determine if it is safe to bootstrap from
     this instance.
 
     :returns: int Safe to bootstrap 0 or 1
     """
 
-    grstate_file = os.path.join(resolve_data_dir(), "grastate.dat")
-    if os.path.exists(grstate_file):
-        with open(grstate_file, 'r') as f:
-            grstate = yaml.safe_load(f)
-        return grstate.get("safe_to_bootstrap")
+    grastate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if os.path.exists(grastate_file):
+        with open(grastate_file, 'r') as f:
+            grastate = yaml.safe_load(f)
+        return grastate.get("safe_to_bootstrap")
 
 
-def set_grstate_safe_to_bootstrap():
+def set_grastate_safe_to_bootstrap():
     """Set GR State safe to bootstrap.
 
-    Update the grstate yaml file to indicate it is safe to bootstrap from
+    Update the grastate yaml file to indicate it is safe to bootstrap from
     this instance.
 
-    :side effect: Writes the grstate.dat file.
-    :raises GRStateFileNotFound: If grstate.dat file does not exist.
+    :side effect: Writes the grastate.dat file.
+    :raises GRAStateFileNotFound: If grastate.dat file does not exist.
     :returns: None
     """
 
-    grstate_file = os.path.join(resolve_data_dir(), "grastate.dat")
-    if not os.path.exists(grstate_file):
-        raise GRStateFileNotFound("{} file does not exist"
-                                  .format(grstate_file))
-    with open(grstate_file, 'r') as f:
-        grstate = yaml.safe_load(f)
+    grastate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if not os.path.exists(grastate_file):
+        raise GRAStateFileNotFound("{} file does not exist"
+                                   .format(grastate_file))
+    with open(grastate_file, 'r') as f:
+        grastate = yaml.safe_load(f)
 
     # Force safe to bootstrap
-    grstate["safe_to_bootstrap"] = 1
+    grastate["safe_to_bootstrap"] = 1
 
-    with open(grstate_file, 'w') as f:
-        f.write(yaml.dump(grstate))
+    with open(grastate_file, 'w') as f:
+        f.write(yaml.dump(grastate))
+
+
+def maybe_notify_bootstrapped():
+    """Maybe notify bootstrapped.
+
+    In the event of a subsequent bootstrap after deploy time, as in the case of
+    a cold start, it is necessary to re-notify the cluster relation of the new
+    bootstrap UUID.
+
+    This function checks that the cluster has been clustered before and
+    notified clients, checks for agreement with the leader on the bootstrap
+    UUID and calls notify_bootstrapped to inform the cluster peers of the UUID.
+
+    :side effect: calls kv()
+    :side effect: may call notify_bootstrapped()
+    :returns: None
+    """
+
+    if not check_mysql_connection():
+        log("MySQL is down: deferring notify bootstrapped", DEBUG)
+        return
+
+    kvstore = kv()
+    # Using INITIAL_CLIENT_UPDATE_KEY as this is a step beyond merely
+    # clustered, but rather clustered and clients were previously notified.
+    if kvstore.get(INITIAL_CLIENT_UPDATE_KEY, False):
+        # Handle a change of bootstrap UUID after cold start bootstrap
+        lead_cluster_state_uuid = leader_get('bootstrap-uuid')
+        cluster_state_uuid = get_wsrep_value('wsrep_cluster_state_uuid')
+        if lead_cluster_state_uuid == cluster_state_uuid:
+            notify_bootstrapped(cluster_uuid=cluster_state_uuid)
