@@ -147,7 +147,8 @@ class TestHARelation(CharmTestCase):
                     'cluster_type="pxc" '
                     'op monitor interval="1s" '
                     'timeout="30s" '
-                    'OCF_CHECK_LEVEL="1"')},
+                    'OCF_CHECK_LEVEL="1" '
+                    'meta migration-threshold=INFINITY failure-timeout=5s')},
             'locations': {
                 'loc_mysql': (
                     'grp_mysql_vips '
@@ -193,7 +194,8 @@ class TestHARelation(CharmTestCase):
                     'cluster_type="pxc" '
                     'op monitor interval="1s" '
                     'timeout="30s" '
-                    'OCF_CHECK_LEVEL="1"')},
+                    'OCF_CHECK_LEVEL="1" '
+                    'meta migration-threshold=INFINITY failure-timeout=5s')},
             'locations': {
                 'loc_mysql': (
                     'grp_mysql_hostnames '

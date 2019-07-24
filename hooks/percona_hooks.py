@@ -159,7 +159,8 @@ RES_MONITOR_PARAMS = ('params user="sstuser" password="%(sstpass)s" '
                       'max_slave_lag="5" '
                       'cluster_type="pxc" '
                       'op monitor interval="1s" timeout="30s" '
-                      'OCF_CHECK_LEVEL="1"')
+                      'OCF_CHECK_LEVEL="1" '
+                      'meta migration-threshold=INFINITY failure-timeout=5s')
 
 MYSQL_SOCKET = "/var/run/mysqld/mysqld.sock"
 
