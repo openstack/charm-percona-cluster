@@ -536,6 +536,9 @@ def config_changed():
         leader = is_leader()
         leader_ip = leader_get('leader-ip')
 
+    # (re)install pcmkr agent
+    install_mysql_ocf()
+
     if leader:
         # If the cluster has not been fully bootstrapped once yet, use an empty
         # hosts list to avoid restarting the leader node's mysqld during
@@ -579,9 +582,6 @@ def config_changed():
 
     # Notify any changes to the access network
     update_client_db_relations()
-
-    # (re)install pcmkr agent
-    install_mysql_ocf()
 
     for rid in relation_ids('ha'):
         # make sure all the HA resources are (re)created
