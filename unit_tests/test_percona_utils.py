@@ -1044,40 +1044,49 @@ class TestUpdateBootstrapUUID(CharmTestCase):
         self.assertRaises(percona_utils.InconsistentUUIDError,
                           percona_utils.update_bootstrap_uuid)
 
-    @mock.patch('charmhelpers.contrib.database.mysql.leader_set')
-    @mock.patch('charmhelpers.contrib.database.mysql.is_leader')
-    @mock.patch('charmhelpers.contrib.database.mysql.leader_get')
-    def test_update_root_password(self, mock_leader_get, mock_is_leader,
-                                  mock_leader_set):
+    @mock.patch.object(percona_utils, 'check_mysql_connection')
+    @mock.patch.object(percona_utils, 'leader_set')
+    @mock.patch.object(percona_utils, 'leader_get')
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_update_root_password(self, mock_get_db_helper,
+                                  mock_leader_get,
+                                  mock_leader_set,
+                                  mock_check_mysql_connection):
         cur_password = 'openstack'
         new_password = 'ubuntu'
-        leader_config = {'mysql.passwd': cur_password}
+        leader_config = {
+            'mysql.passwd': cur_password,
+            'root-password': cur_password}
+
+        _db_helper = mock.Mock()
+        _db_helper.get_mysql_password.return_value = cur_password
+        mock_get_db_helper.return_value = _db_helper
         mock_leader_get.side_effect = lambda k: leader_config[k]
-        mock_is_leader.return_value = True
 
         self.config.side_effect = self.test_config.get
         self.assertFalse(percona_utils.update_root_password())
 
+        _db_helper.reset_mock()
+        mock_check_mysql_connection.reset_mock()
         self.test_config.set_previous('root-password', cur_password)
         self.test_config.set('root-password', new_password)
         percona_utils.update_root_password()
-
-        mock_leader_set.assert_called_with(
-            settings={'mysql.passwd': new_password})
-
-    @mock.patch.object(percona_utils, 'leader_get')
-    @mock.patch.object(percona_utils, 'get_db_helper')
-    def test_update_root_password_None(self, mock_get_db_helper,
-                                       mock_leader_get):
-        # Test fix for 1744961
-        my_mock = mock.Mock()
-        mock_get_db_helper.return_value = my_mock
-        self.config.side_effect = self.test_config.get
-        leader_config = {'root-password': 'leaderpass'}
-        mock_leader_get.side_effect = lambda k: leader_config[k]
-
-        percona_utils.update_root_password()
-        my_mock.set_mysql_root_password.assert_called_once_with('leaderpass')
+        _db_helper.connect.assert_called_once_with(
+            password='openstack',
+            user='root')
+        db_exec_calls = [
+            mock.call("""SET PASSWORD = PASSWORD('ubuntu');"""),
+            mock.call(
+                """SET PASSWORD FOR 'root'@'localhost' """
+                """= PASSWORD('ubuntu');""")
+        ]
+        _db_helper.execute.assert_has_calls(db_exec_calls)
+        mock_check_mysql_connection.assert_called_once_with(
+            password='ubuntu')
+        leader_set_calls = [
+            mock.call({'root-password': 'ubuntu'}),
+            mock.call({'mysql.passwd': 'ubuntu'})]
+        mock_leader_set.assert_has_calls(leader_set_calls)
 
     def test_is_leader_bootstrapped_once(self):
         leader_config = {'bootstrap-uuid': None, 'mysql.passwd': None,

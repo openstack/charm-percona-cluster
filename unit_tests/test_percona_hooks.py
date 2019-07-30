@@ -561,7 +561,7 @@ class TestConfigChanged(CharmTestCase):
         self.render_config_restart_on_changed.assert_called_once_with(
             ['10.10.10.20', '10.10.10.30', '10.10.10.10'])
         self.update_bootstrap_uuid.assert_called_once()
-        self.update_root_password.assert_called_once()
+        self.assertFalse(self.update_root_password.called)
         self.set_ready_on_peers.called_once()
 
 

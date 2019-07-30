@@ -1031,24 +1031,36 @@ def update_root_password():
 
     cfg = config()
     if not cfg.changed('root-password'):
+        log("Root password update not required", level=DEBUG)
         return False
 
+    log("Updating root password", level=DEBUG)
     m_helper = get_db_helper()
 
+    current_password = m_helper.get_mysql_password(username=None)
     # password that needs to be set
     new_root_passwd = cfg['root-password'] or root_password()
-    m_helper.set_mysql_root_password(new_root_passwd)
 
     # check the password was changed
     try:
-        m_helper.connect(user='root', password=new_root_passwd)
-        m_helper.execute('select 1;')
+        m_helper.connect(user='root', password=current_password)
+        m_helper.execute(
+            """SET PASSWORD = PASSWORD('{}');""".format(new_root_passwd))
+        # Covers root and root@localhost
+        m_helper.execute(
+            """SET PASSWORD FOR 'root'@'localhost' = PASSWORD('{}');""".format(
+                new_root_passwd))
+
     except OperationalError as ex:
         log("Error connecting using new password: {}"
             .format(str(ex)), level=DEBUG)
         log(('Cannot connect using new password, not updating password in '
              'the relation'), level=WARNING)
         return
+    if check_mysql_connection(password=new_root_passwd):
+        log("Root password update succeeded", level=DEBUG)
+        leader_set({'root-password': new_root_passwd})
+        leader_set({'mysql.passwd': new_root_passwd})
 
 
 def cluster_wait():
@@ -1472,19 +1484,22 @@ def list_replication_users():
     return replication_users
 
 
-def check_mysql_connection():
+def check_mysql_connection(password=None):
     """Check if local instance of mysql is accessible.
 
     Attempt a connection to the local instance of mysql to determine if it is
     running and accessible.
 
+    :param password: Password to use for connection test.
+    :type password: str
     :side effect: Uses get_db_helper to execute a connection to the DB.
     :returns: boolean
     """
 
     m_helper = get_db_helper()
+    password = password or m_helper.get_mysql_root_password()
     try:
-        m_helper.connect(password=m_helper.get_mysql_root_password())
+        m_helper.connect(password=password)
         return True
     except OperationalError:
         log("Could not connect to db", DEBUG)

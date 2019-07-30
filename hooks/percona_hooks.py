@@ -595,7 +595,8 @@ def config_changed():
     # the password needs to be updated only if the node was already
     # bootstrapped
     if is_bootstrapped():
-        update_root_password()
+        if is_leader():
+            update_root_password()
         set_ready_on_peers()
 
     # NOTE(tkurek): re-set 'master' relation data
@@ -1106,6 +1107,11 @@ def slave_departed():
 @harden()
 def update_status():
     log('Updating status.')
+    cfg = config()
+    # Disable implicit save as update_status will not act on any
+    # config changes but a subsequent hook might need to see
+    # any changes. Bug #1838125
+    cfg.implicit_save = False
 
 
 def main():
