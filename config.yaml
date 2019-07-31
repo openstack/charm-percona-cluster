@@ -345,10 +345,10 @@ options:
     type: int
     default:
     description: |
-      Specifies the number of threads that can apply replication transactions in
-      parallel. Galera supports true parallel replication that applies
-      transactions in parallel only when it is safe to do so.  Unset leaves the
-      default value of 1.
+      Specifies the number of threads that can apply replication transactions
+      in parallel. Galera supports true parallel replication that applies
+      transactions in parallel only when it is safe to do so. When unset
+      defaults to 48 for >= Bionic or 1 for <= Xenial.
   gcs-fc-limit:
     type: int
     default:

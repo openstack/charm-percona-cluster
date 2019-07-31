@@ -1,13 +1,12 @@
+import collections
 import os
-import sys
 import tempfile
 
 import mock
 
-sys.modules['MySQLdb'] = mock.Mock()
 import percona_utils
 
-from test_utils import CharmTestCase
+from test_utils import CharmTestCase, patch_open
 
 os.environ['JUJU_UNIT_NAME'] = 'percona-cluster/2'
 
@@ -15,11 +14,15 @@ os.environ['JUJU_UNIT_NAME'] = 'percona-cluster/2'
 class UtilsTests(CharmTestCase):
     TO_PATCH = [
         'config',
+        'kv',
+        'leader_get',
         'log',
         'relation_ids',
         'related_units',
         'relation_get',
         'relation_set',
+        'get_db_helper',
+        'yaml',
     ]
 
     def setUp(self):
@@ -27,61 +30,72 @@ class UtilsTests(CharmTestCase):
 
     @mock.patch("percona_utils.log")
     def test_update_empty_hosts_file(self, mock_log):
-        map = {'1.2.3.4': 'my-host'}
+        _map = {'1.2.3.4': 'my-host'}
         with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
             percona_utils.HOSTS_FILE = tmpfile.name
             percona_utils.HOSTS_FILE = tmpfile.name
-            percona_utils.update_hosts_file(map)
+            percona_utils.update_hosts_file(_map)
 
-        with open(tmpfile.name, 'r') as fd:
+        with open(tmpfile.name, 'r', encoding="UTF-8") as fd:
             lines = fd.readlines()
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0], "%s %s\n" % (map.items()[0]))
+        self.assertEqual(lines[0],
+                         "{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
 
     @mock.patch("percona_utils.log")
     def test_update_hosts_file_w_dup(self, mock_log):
-        map = {'1.2.3.4': 'my-host'}
+        _map = {'1.2.3.4': 'my-host'}
         with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
             percona_utils.HOSTS_FILE = tmpfile.name
 
-            with open(tmpfile.name, 'w') as fd:
-                fd.write("%s %s\n" % (map.items()[0]))
+            with open(tmpfile.name, 'w', encoding="UTF-8") as fd:
+                fd.write("{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
 
-            percona_utils.update_hosts_file(map)
+            percona_utils.update_hosts_file(_map)
 
-        with open(tmpfile.name, 'r') as fd:
+        with open(tmpfile.name, 'r', encoding="UTF-8") as fd:
             lines = fd.readlines()
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0], "%s %s\n" % (map.items()[0]))
+        self.assertEqual(lines[0],
+                         "{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
 
     @mock.patch("percona_utils.log")
     def test_update_hosts_file_entry(self, mock_log):
         altmap = {'1.1.1.1': 'alt-host'}
-        map = {'1.1.1.1': 'hostA',
-               '2.2.2.2': 'hostB',
-               '3.3.3.3': 'hostC',
-               '4.4.4.4': 'hostD'}
+        _map = collections.OrderedDict()
+        _map['1.1.1.1'] = 'hostA'
+        _map['2.2.2.2'] = 'hostB'
+        _map['3.3.3.3'] = 'hostC'
+        _map['4.4.4.4'] = 'hostD'
         with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
             percona_utils.HOSTS_FILE = tmpfile.name
 
-            with open(tmpfile.name, 'w') as fd:
+            with open(tmpfile.name, 'w', encoding="UTF-8") as fd:
                 fd.write("#somedata\n")
-                fd.write("%s %s\n" % (altmap.items()[0]))
+                fd.write("{} {}\n".format(list(altmap.keys())[0],
+                                          list(altmap.values())[0]))
 
-            percona_utils.update_hosts_file(map)
+            percona_utils.update_hosts_file(_map)
 
-        with open(percona_utils.HOSTS_FILE, 'r') as fd:
+        with open(percona_utils.HOSTS_FILE, 'r', encoding="UTF-8") as fd:
             lines = fd.readlines()
 
         os.remove(tmpfile.name)
         self.assertEqual(len(lines), 5)
         self.assertEqual(lines[0], "#somedata\n")
-        self.assertEqual(lines[1], "%s %s\n" % (map.items()[0]))
-        self.assertEqual(lines[4], "%s %s\n" % (map.items()[3]))
+        self.assertEqual(lines[1],
+                         "{} {}\n".format(list(_map.keys())[0],
+                                          list(_map.values())[0]))
+        self.assertEqual(lines[4],
+                         "{} {}\n".format(list(_map.keys())[3],
+                                          list(_map.values())[3]))
 
     @mock.patch("percona_utils.get_cluster_host_ip")
     @mock.patch("percona_utils.log")
@@ -408,6 +422,97 @@ class UtilsTests(CharmTestCase):
         with self.assertRaises(Exception):
             percona_utils.check_for_socket("filename", exists=False)
         _time.sleep.assert_called_with(10)
+
+    def test_check_mysql_connection(self):
+        _db_helper = mock.MagicMock()
+        _db_helper.get_mysql_root_password.return_value = "password"
+        self.get_db_helper.return_value = _db_helper
+
+        _db_helper.connect.return_value = mock.MagicMock()
+        self.assertTrue(percona_utils.check_mysql_connection())
+
+        # The MySQLdb module is fully mocked out, including the
+        # OperationalError. Make OperationalError behave like an exception.
+        percona_utils.OperationalError = Exception
+        _db_helper.connect.side_effect = percona_utils.OperationalError
+        self.assertFalse(percona_utils.check_mysql_connection())
+
+    @mock.patch("percona_utils.resolve_data_dir")
+    @mock.patch("percona_utils.os")
+    def test_get_grastate_seqno(self, _os, _resolve_dd):
+        _resolve_dd.return_value = "/tmp"
+        _seqno = "25"
+        _os.path.exists.return_value = True
+        self.yaml.safe_load.return_value = {"seqno": _seqno}
+        with patch_open() as (_open, _file):
+            _open.return_value = _file
+            self.assertEqual(_seqno, percona_utils.get_grastate_seqno())
+
+    @mock.patch("percona_utils.resolve_data_dir")
+    @mock.patch("percona_utils.os")
+    def test_get_grastate_safe_to_bootstrap(self, _os, _resolve_dd):
+        _resolve_dd.return_value = "/tmp"
+        _bootstrap = "0"
+        _os.path.exists.return_value = True
+        self.yaml.safe_load.return_value = {"safe_to_bootstrap": _bootstrap}
+        with patch_open() as (_open, _file):
+            _open.return_value = _file
+            self.assertEqual(
+                _bootstrap, percona_utils.get_grastate_safe_to_bootstrap())
+
+    @mock.patch("percona_utils.resolve_data_dir")
+    @mock.patch("percona_utils.os")
+    def test_set_grastate_safe_to_bootstrap(self, _os, _resolve_dd):
+        _resolve_dd.return_value = "/tmp"
+        _bootstrap = "0"
+        _os.path.exists.return_value = True
+        self.yaml.safe_load.return_value = {"safe_to_bootstrap": _bootstrap}
+        with patch_open() as (_open, _file):
+            _open.return_value = _file
+            _file.write = mock.MagicMock()
+            percona_utils.set_grastate_safe_to_bootstrap()
+            self.yaml.dump.assert_called_once_with({"safe_to_bootstrap": 1})
+            _file.write.assert_called_once()
+
+    @mock.patch("percona_utils.check_mysql_connection")
+    @mock.patch("percona_utils.get_wsrep_value")
+    @mock.patch("percona_utils.notify_bootstrapped")
+    def test_maybe_notify_bootstrapped(
+            self, _notify_bootstrapped,
+            _get_wsrep_value, _check_mysql_connection):
+        kvstore = mock.MagicMock()
+        kvstore.get.return_value = True
+        self.kv.return_value = kvstore
+
+        _check_mysql_connection.return_value = False
+
+        _uuid = "uuid-uuid"
+        self.leader_get.return_value = _uuid
+        _get_wsrep_value.return_value = _uuid
+
+        # mysql not runnig
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_not_called()
+
+        # No clients initialized
+        _check_mysql_connection.return_value = True
+        kvstore.get.return_value = False
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_not_called()
+
+        # Differing UUID
+        _check_mysql_connection.return_value = True
+        kvstore.get.return_value = True
+        _get_wsrep_value.return_value = "not-the-same-uuid"
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_not_called()
+
+        # Differing UUID
+        _check_mysql_connection.return_value = True
+        kvstore.get.return_value = True
+        _get_wsrep_value.return_value = _uuid
+        percona_utils.maybe_notify_bootstrapped()
+        _notify_bootstrapped.assert_called_once_with(cluster_uuid=_uuid)
 
 
 class UtilsTestsStatus(CharmTestCase):
@@ -885,7 +990,7 @@ class TestUpdateBootstrapUUID(CharmTestCase):
         self.log.side_effect = self.juju_log
 
     def juju_log(self, msg, level=None):
-        print('juju-log %s: %s' % (level, msg))
+        print("juju-log {}: {}".format(level, msg))
 
     def test_no_bootstrap_uuid(self):
         self.leader_get.return_value = None
@@ -939,40 +1044,49 @@ class TestUpdateBootstrapUUID(CharmTestCase):
         self.assertRaises(percona_utils.InconsistentUUIDError,
                           percona_utils.update_bootstrap_uuid)
 
-    @mock.patch('charmhelpers.contrib.database.mysql.leader_set')
-    @mock.patch('charmhelpers.contrib.database.mysql.is_leader')
-    @mock.patch('charmhelpers.contrib.database.mysql.leader_get')
-    def test_update_root_password(self, mock_leader_get, mock_is_leader,
-                                  mock_leader_set):
+    @mock.patch.object(percona_utils, 'check_mysql_connection')
+    @mock.patch.object(percona_utils, 'leader_set')
+    @mock.patch.object(percona_utils, 'leader_get')
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_update_root_password(self, mock_get_db_helper,
+                                  mock_leader_get,
+                                  mock_leader_set,
+                                  mock_check_mysql_connection):
         cur_password = 'openstack'
         new_password = 'ubuntu'
-        leader_config = {'mysql.passwd': cur_password}
+        leader_config = {
+            'mysql.passwd': cur_password,
+            'root-password': cur_password}
+
+        _db_helper = mock.Mock()
+        _db_helper.get_mysql_password.return_value = cur_password
+        mock_get_db_helper.return_value = _db_helper
         mock_leader_get.side_effect = lambda k: leader_config[k]
-        mock_is_leader.return_value = True
 
         self.config.side_effect = self.test_config.get
         self.assertFalse(percona_utils.update_root_password())
 
+        _db_helper.reset_mock()
+        mock_check_mysql_connection.reset_mock()
         self.test_config.set_previous('root-password', cur_password)
         self.test_config.set('root-password', new_password)
         percona_utils.update_root_password()
-
-        mock_leader_set.assert_called_with(
-            settings={'mysql.passwd': new_password})
-
-    @mock.patch.object(percona_utils, 'leader_get')
-    @mock.patch.object(percona_utils, 'get_db_helper')
-    def test_update_root_password_None(self, mock_get_db_helper,
-                                       mock_leader_get):
-        # Test fix for 1744961
-        my_mock = mock.Mock()
-        mock_get_db_helper.return_value = my_mock
-        self.config.side_effect = self.test_config.get
-        leader_config = {'root-password': 'leaderpass'}
-        mock_leader_get.side_effect = lambda k: leader_config[k]
-
-        percona_utils.update_root_password()
-        my_mock.set_mysql_root_password.assert_called_once_with('leaderpass')
+        _db_helper.connect.assert_called_once_with(
+            password='openstack',
+            user='root')
+        db_exec_calls = [
+            mock.call("""SET PASSWORD = PASSWORD('ubuntu');"""),
+            mock.call(
+                """SET PASSWORD FOR 'root'@'localhost' """
+                """= PASSWORD('ubuntu');""")
+        ]
+        _db_helper.execute.assert_has_calls(db_exec_calls)
+        mock_check_mysql_connection.assert_called_once_with(
+            password='ubuntu')
+        leader_set_calls = [
+            mock.call({'root-password': 'ubuntu'}),
+            mock.call({'mysql.passwd': 'ubuntu'})]
+        mock_leader_set.assert_has_calls(leader_set_calls)
 
     def test_is_leader_bootstrapped_once(self):
         leader_config = {'bootstrap-uuid': None, 'mysql.passwd': None,
