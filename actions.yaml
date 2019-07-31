@@ -36,6 +36,16 @@ delete-user:
   required:
     - username
 
+create-database:
+  description: >
+    Creates an empty database within the instance
+  params:
+    database:
+      type: string
+      description: The name of the database to create
+  required:
+    - database
+
 pause:
   description: Pause the MySQL service.
 resume:
@@ -62,3 +72,13 @@ complete-cluster-series-upgrade:
     peers for wsrep replication.
     This action should be performed on the current leader. Note the leader may
     have changed during the series upgrade process.
+bootstrap-pxc:
+  description: |
+    Bootstrap this unit of Percona.
+    *WARNING* This action will bootstrap this unit of Percona cluster. This
+    should only occur in a recovery scenario. Make sure this unit has the
+    highest sequence number in grastate.dat or data loss may occur.
+    See upstream Percona documentation for context
+    https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/
+notify-bootstrapped:
+   descripttion: Notify the cluster of the new bootstrap uuid.

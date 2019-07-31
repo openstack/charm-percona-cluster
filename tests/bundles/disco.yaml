@@ -1,0 +1,14 @@
+series: disco
+relations:
+- - keystone:shared-db
+  - percona-cluster:shared-db
+applications:
+  percona-cluster:
+    series: disco
+    charm: ../../../percona-cluster
+    num_units: 1
+  keystone:
+    charm: cs:~openstack-charmers-next/keystone
+    num_units: 1
+    options:
+      token-expiration: 60

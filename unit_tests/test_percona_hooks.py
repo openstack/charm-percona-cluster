@@ -147,7 +147,8 @@ class TestHARelation(CharmTestCase):
                     'cluster_type="pxc" '
                     'op monitor interval="1s" '
                     'timeout="30s" '
-                    'OCF_CHECK_LEVEL="1"')},
+                    'OCF_CHECK_LEVEL="1" '
+                    'meta migration-threshold=INFINITY failure-timeout=5s')},
             'locations': {
                 'loc_mysql': (
                     'grp_mysql_vips '
@@ -193,7 +194,8 @@ class TestHARelation(CharmTestCase):
                     'cluster_type="pxc" '
                     'op monitor interval="1s" '
                     'timeout="30s" '
-                    'OCF_CHECK_LEVEL="1"')},
+                    'OCF_CHECK_LEVEL="1" '
+                    'meta migration-threshold=INFINITY failure-timeout=5s')},
             'locations': {
                 'loc_mysql': (
                     'grp_mysql_hostnames '
@@ -559,7 +561,7 @@ class TestConfigChanged(CharmTestCase):
         self.render_config_restart_on_changed.assert_called_once_with(
             ['10.10.10.20', '10.10.10.30', '10.10.10.10'])
         self.update_bootstrap_uuid.assert_called_once()
-        self.update_root_password.assert_called_once()
+        self.assertFalse(self.update_root_password.called)
         self.set_ready_on_peers.called_once()
 
 
@@ -637,7 +639,7 @@ class TestUpgradeCharm(CharmTestCase):
     ]
 
     def print_log(self, msg, level=None):
-        print('juju-log: %s: %s' % (level, msg))
+        print("juju-log: {}: {}".format(level, msg))
 
     def setUp(self):
         CharmTestCase.setUp(self, hooks, self.TO_PATCH)
@@ -709,7 +711,7 @@ class TestConfigs(CharmTestCase):
                           'of %s. ' % f)
             raise Exception
 
-        return yaml.safe_load(open(config).read())['options']
+        return yaml.safe_load(open(config, encoding="UTF-8").read())['options']
 
     def _get_default_config(self):
         '''Load default charm config from config.yaml return as a dict.
@@ -717,12 +719,64 @@ class TestConfigs(CharmTestCase):
         '''
         default_config = {}
         config = self._load_config()
-        for k, v in config.iteritems():
+        for k, v in config.items():
             if 'default' in v:
                 default_config[k] = v['default']
             else:
                 default_config[k] = None
         return default_config
+
+    @mock.patch.object(os, 'makedirs')
+    @mock.patch.object(hooks, 'get_cluster_host_ip')
+    @mock.patch.object(hooks, 'get_wsrep_provider_options')
+    @mock.patch.object(PerconaClusterHelper, 'parse_config')
+    @mock.patch.object(hooks, 'render')
+    @mock.patch.object(hooks, 'sst_password')
+    @mock.patch.object(hooks, 'lsb_release')
+    def test_render_config_defaults_xenial(self,
+                                           lsb_release,
+                                           sst_password,
+                                           render,
+                                           parse_config,
+                                           get_wsrep_provider_options,
+                                           get_cluster_host_ip,
+                                           makedirs):
+        parse_config.return_value = {'key_buffer': '32M'}
+        get_cluster_host_ip.return_value = '10.1.1.1'
+        get_wsrep_provider_options.return_value = None
+        sst_password.return_value = 'sstpassword'
+        lsb_release.return_value = {'DISTRIB_CODENAME': 'xenial'}
+        context = {
+            'wsrep_slave_threads': 1,
+            'server-id': hooks.get_server_id(),
+            'is_leader': hooks.is_leader(),
+            'series_upgrade': hooks.is_unit_upgrading_set(),
+            'private_address': '10.1.1.1',
+            'cluster_hosts': '',
+            'enable_binlogs': self.default_config['enable-binlogs'],
+            'sst_password': 'sstpassword',
+            'myisam_recover': 'BACKUP',
+            'sst_method': self.default_config['sst-method'],
+            'server_id': hooks.get_server_id(),
+            'binlogs_max_size': self.default_config['binlogs-max-size'],
+            'key_buffer': '32M',
+            'performance_schema': self.default_config['performance-schema'],
+            'binlogs_path': self.default_config['binlogs-path'],
+            'cluster_name': 'juju_cluster',
+            'binlogs_expire_days': self.default_config['binlogs-expire-days'],
+            'ipv6': False,
+            'innodb_file_per_table':
+            self.default_config['innodb-file-per-table'],
+            'table_open_cache': self.default_config['table-open-cache'],
+            'wsrep_provider': '/usr/lib/libgalera_smm.so',
+        }
+
+        hooks.render_config()
+        hooks.render.assert_called_once_with(
+            'mysqld.cnf',
+            '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
+            context,
+            perms=0o444)
 
     @mock.patch.object(os, 'makedirs')
     @mock.patch.object(hooks, 'get_cluster_host_ip')
@@ -745,6 +799,7 @@ class TestConfigs(CharmTestCase):
         sst_password.return_value = 'sstpassword'
         lsb_release.return_value = {'DISTRIB_CODENAME': 'bionic'}
         context = {
+            'wsrep_slave_threads': 48,
             'server_id': hooks.get_server_id(),
             'server-id': hooks.get_server_id(),
             'is_leader': hooks.is_leader(),

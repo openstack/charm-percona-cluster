@@ -17,10 +17,51 @@ import re
 from stat import S_ISBLK
 
 from subprocess import (
+    CalledProcessError,
     check_call,
     check_output,
     call
 )
+
+
+def _luks_uuid(dev):
+    """
+    Check to see if dev is a LUKS encrypted volume, returning the UUID
+    of volume if it is.
+
+    :param: dev: path to block device to check.
+    :returns: str. UUID of LUKS device or None if not a LUKS device
+    """
+    try:
+        cmd = ['cryptsetup', 'luksUUID', dev]
+        return check_output(cmd).decode('UTF-8').strip()
+    except CalledProcessError:
+        return None
+
+
+def is_luks_device(dev):
+    """
+    Determine if dev is a LUKS-formatted block device.
+
+    :param: dev: A full path to a block device to check for LUKS header
+    presence
+    :returns: boolean: indicates whether a device is used based on LUKS header.
+    """
+    return True if _luks_uuid(dev) else False
+
+
+def is_mapped_luks_device(dev):
+    """
+    Determine if dev is a mapped LUKS device
+    :param: dev: A full path to a block device to be checked
+    :returns: boolean: indicates whether a device is mapped
+    """
+    _, dirs, _ = next(os.walk(
+        '/sys/class/block/{}/holders/'
+        .format(os.path.basename(os.path.realpath(dev))))
+    )
+    is_held = len(dirs) > 0
+    return is_held and is_luks_device(dev)
 
 
 def is_block_device(path):
@@ -69,17 +110,19 @@ def is_device_mounted(device):
     return bool(re.search(r'MOUNTPOINT=".+"', out))
 
 
-def mkfs_xfs(device, force=False):
+def mkfs_xfs(device, force=False, inode_size=1024):
     """Format device with XFS filesystem.
 
     By default this should fail if the device already has a filesystem on it.
     :param device: Full path to device to format
     :ptype device: tr
     :param force: Force operation
-    :ptype: force: boolean"""
+    :ptype: force: boolean
+    :param inode_size: XFS inode size in bytes
+    :ptype inode_size: int"""
     cmd = ['mkfs.xfs']
     if force:
         cmd.append("-f")
 
-    cmd += ['-i', 'size=1024', device]
+    cmd += ['-i', "size={}".format(inode_size), device]
     check_call(cmd)

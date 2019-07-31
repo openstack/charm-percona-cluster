@@ -1,10 +1,22 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # TODO: Support changes to root and sstuser passwords
+import collections
 import sys
 import json
 import os
 import socket
 import subprocess
+
+_path = os.path.dirname(os.path.realpath(__file__))
+_root = os.path.abspath(os.path.join(_path, '..'))
+
+
+def _add_path(path):
+    if path not in sys.path:
+        sys.path.insert(1, path)
+
+_add_path(_root)
+
 
 from charmhelpers.core.hookenv import (
     Hooks, UnregisteredHookError,
@@ -94,10 +106,12 @@ from percona_utils import (
     get_db_helper,
     mark_seeded, seeded,
     install_mysql_ocf,
+    maybe_notify_bootstrapped,
     notify_bootstrapped,
     is_bootstrapped,
     clustered_once,
     INITIAL_CLUSTERED_KEY,
+    INITIAL_CLIENT_UPDATE_KEY,
     is_leader_bootstrapped,
     get_wsrep_value,
     assess_status,
@@ -132,6 +146,7 @@ from percona_utils import (
     get_slave_status,
     delete_replication_user,
     list_replication_users,
+    check_mysql_connection,
 )
 
 from charmhelpers.core.unitdata import kv
@@ -144,9 +159,8 @@ RES_MONITOR_PARAMS = ('params user="sstuser" password="%(sstpass)s" '
                       'max_slave_lag="5" '
                       'cluster_type="pxc" '
                       'op monitor interval="1s" timeout="30s" '
-                      'OCF_CHECK_LEVEL="1"')
-
-INITIAL_CLIENT_UPDATE_KEY = 'initial_client_update_done'
+                      'OCF_CHECK_LEVEL="1" '
+                      'meta migration-threshold=INFINITY failure-timeout=5s')
 
 MYSQL_SOCKET = "/var/run/mysqld/mysqld.sock"
 
@@ -239,12 +253,16 @@ def render_config(hosts=None):
         # only set it for PXC 5.6.
         context['myisam_recover'] = 'BACKUP'
         context['wsrep_provider'] = '/usr/lib/libgalera_smm.so'
+        if 'wsrep_slave_threads' not in context:
+            context['wsrep_slave_threads'] = 1
     elif CompareHostReleases(lsb_release()['DISTRIB_CODENAME']) >= 'bionic':
         context['wsrep_provider'] = '/usr/lib/galera3/libgalera_smm.so'
         context['default_storage_engine'] = 'InnoDB'
         context['wsrep_log_conflicts'] = True
         context['innodb_autoinc_lock_mode'] = '2'
         context['pxc_strict_mode'] = config('pxc-strict-mode')
+        if 'wsrep_slave_threads' not in context:
+            context['wsrep_slave_threads'] = 48
 
     if config('databases-to-replicate'):
         context['databases_to_replicate'] = get_databases_to_replicate()
@@ -316,7 +334,8 @@ def render_config_restart_on_changed(hosts, bootstrap=False):
 def update_client_db_relations():
     """ Upate client db relations IFF ready
     """
-    if leader_node_is_ready() or client_node_is_ready():
+    if ((leader_node_is_ready() or
+            client_node_is_ready()) and check_mysql_connection()):
         for r_id in relation_ids('shared-db'):
             for unit in related_units(r_id):
                 shared_db_changed(r_id, unit)
@@ -517,6 +536,9 @@ def config_changed():
         leader = is_leader()
         leader_ip = leader_get('leader-ip')
 
+    # (re)install pcmkr agent
+    install_mysql_ocf()
+
     if leader:
         # If the cluster has not been fully bootstrapped once yet, use an empty
         # hosts list to avoid restarting the leader node's mysqld during
@@ -527,7 +549,8 @@ def config_changed():
         # Empty hosts if cluster_series_upgrading
         if not clustered_once() or cluster_series_upgrading:
             hosts = []
-        log("Leader unit - bootstrap required=%s" % (not leader_bootstrapped),
+        log("Leader unit - bootstrap required={}"
+            .format(not leader_bootstrapped),
             DEBUG)
         render_config_restart_on_changed(hosts,
                                          bootstrap=not leader_bootstrapped)
@@ -560,9 +583,6 @@ def config_changed():
     # Notify any changes to the access network
     update_client_db_relations()
 
-    # (re)install pcmkr agent
-    install_mysql_ocf()
-
     for rid in relation_ids('ha'):
         # make sure all the HA resources are (re)created
         ha_relation_joined(relation_id=rid)
@@ -575,7 +595,8 @@ def config_changed():
     # the password needs to be updated only if the node was already
     # bootstrapped
     if is_bootstrapped():
-        update_root_password()
+        if is_leader():
+            update_root_password()
         set_ready_on_peers()
 
     # NOTE(tkurek): re-set 'master' relation data
@@ -594,7 +615,7 @@ def cluster_joined():
 
     relation_settings['cluster-address'] = get_cluster_host_ip()
 
-    log("Setting cluster relation: '%s'" % (relation_settings),
+    log("Setting cluster relation: '{}'".format(relation_settings),
         level=INFO)
     relation_set(relation_settings=relation_settings)
 
@@ -609,13 +630,15 @@ def cluster_changed():
     # NOTE(jamespage): deprecated - leader-election
     rdata = relation_get()
     inc_list = []
-    for attr in rdata.iterkeys():
+    for attr in rdata.keys():
         if attr not in ['hostname', 'private-address', 'cluster-address',
                         'public-address', 'ready']:
             inc_list.append(attr)
 
     peer_echo(includes=inc_list)
     # NOTE(jamespage): deprecated - leader-election
+
+    maybe_notify_bootstrapped()
 
     cluster_joined()
     config_changed()
@@ -713,13 +736,13 @@ def get_db_host(client_hostname, interface='shared-db'):
                     if is_address_in_network(access_network, vip):
                         return vip
 
-                log("Unable to identify a VIP in the access-network '%s'" %
-                    (access_network), level=WARNING)
+                log("Unable to identify a VIP in the access-network '{}'"
+                    .format(access_network), level=WARNING)
             else:
                 return get_address_in_network(access_network)
         else:
-            log("Client address '%s' not in access-network '%s'" %
-                (client_ip, access_network), level=WARNING)
+            log("Client address '{}' not in access-network '{}'"
+                .format(client_ip, access_network), level=WARNING)
     else:
         try:
             # NOTE(jamespage)
@@ -751,10 +774,11 @@ def configure_db_for_hosts(hosts, database, username, db_helper):
     """Hosts may be a json-encoded list of hosts or a single hostname."""
     try:
         hosts = json.loads(hosts)
-        log("Multiple hostnames provided by relation: %s" % (', '.join(hosts)),
+        log("Multiple hostnames provided by relation: {}"
+            .format(', '.join(hosts)),
             level=DEBUG)
     except ValueError:
-        log("Single hostname provided by relation: %s" % (hosts),
+        log("Single hostname provided by relation: {}".format(hosts),
             level=DEBUG)
         hosts = [hosts]
 
@@ -787,7 +811,7 @@ def shared_db_changed(relation_id=None, unit=None):
     peer_store_and_set(relation_id=relation_id,
                        relation_settings={'access-network': access_network})
 
-    singleset = set(['database', 'username', 'hostname'])
+    singleset = {'database', 'username', 'hostname'}
     if singleset.issubset(settings):
         # Process a single database configuration
         hostname = settings['hostname']
@@ -801,8 +825,8 @@ def shared_db_changed(relation_id=None, unit=None):
             #       database access if remote unit has presented a
             #       hostname or ip address thats within the configured
             #       network cidr
-            log("Host '%s' not in access-network '%s' - ignoring" %
-                (normalized_address, access_network), level=INFO)
+            log("Host '{}' not in access-network '{}' - ignoring"
+                .format(normalized_address, access_network), level=INFO)
             return
 
         # NOTE: do this before querying access grants
@@ -839,16 +863,16 @@ def shared_db_changed(relation_id=None, unit=None):
         #    }
         # }
         #
-        databases = {}
-        for k, v in settings.iteritems():
+        databases = collections.OrderedDict()
+        for k, v in settings.items():
             db = k.split('_')[0]
             x = '_'.join(k.split('_')[1:])
             if db not in databases:
-                databases[db] = {}
+                databases[db] = collections.OrderedDict()
             databases[db][x] = v
 
-        allowed_units = {}
-        return_data = {}
+        allowed_units = collections.OrderedDict()
+        return_data = collections.OrderedDict()
         for db in databases:
             if singleset.issubset(databases[db]):
                 database = databases[db]['database']
@@ -872,10 +896,10 @@ def shared_db_changed(relation_id=None, unit=None):
                 a_units = db_helper.get_allowed_units(database, username,
                                                       relation_id=relation_id)
                 a_units = ' '.join(unit_sorted(a_units))
-                allowed_units_key = '%s_allowed_units' % (db)
+                allowed_units_key = '{}_allowed_units'.format(db)
                 allowed_units[allowed_units_key] = a_units
 
-                return_data['%s_password' % (db)] = password
+                return_data['{}_password'.format(db)] = password
                 return_data[allowed_units_key] = a_units
                 db_host = get_db_host(hostname)
 
@@ -934,6 +958,9 @@ def ha_relation_changed():
 @hooks.hook('leader-settings-changed')
 def leader_settings_changed():
     '''Re-trigger install once leader has seeded passwords into install'''
+
+    maybe_notify_bootstrapped()
+
     config_changed()
     # NOTE(tkurek): re-set 'master' relation data
     if relation_ids('master'):
@@ -1080,6 +1107,11 @@ def slave_departed():
 @harden()
 def update_status():
     log('Updating status.')
+    cfg = config()
+    # Disable implicit save as update_status will not act on any
+    # config changes but a subsequent hook might need to see
+    # any changes. Bug #1838125
+    cfg.implicit_save = False
 
 
 def main():

@@ -11,7 +11,7 @@ series:
   - xenial
   - bionic
   - cosmic
-  - trusty
+  - disco
 extra-bindings:
   access:
 provides:
