@@ -399,6 +399,7 @@ class TestConfigChanged(CharmTestCase):
         'set_ready_on_peers',
         'is_unit_paused_set',
         'is_unit_upgrading_set',
+        'get_cluster_host_ip',
     ]
 
     def setUp(self):
@@ -543,6 +544,24 @@ class TestConfigChanged(CharmTestCase):
         hooks.config_changed()
         self.render_config_restart_on_changed.assert_called_once_with(
             ['10.10.10.20', '10.10.10.30', '10.10.10.10'])
+        self.update_bootstrap_uuid.assert_called_once()
+
+        # Bug #1838648
+        # Do not add *this* host as a former leader
+        self.get_cluster_host_ip.return_value = '10.10.10.30'
+        self.render_config_restart_on_changed.reset_mock()
+        self.update_bootstrap_uuid.reset_mock()
+        self.get_cluster_hosts.return_value = ['10.10.10.10', '10.10.10.20']
+
+        def _leader_get(key):
+            settings = {'leader-ip': '10.10.10.30',
+                        'cluster_series_upgrading': False}
+            return settings.get(key)
+        self.leader_get.side_effect = _leader_get
+
+        hooks.config_changed()
+        self.render_config_restart_on_changed.assert_called_once_with(
+            ['10.10.10.10', '10.10.10.20'])
         self.update_bootstrap_uuid.assert_called_once()
 
         # In none of the prior scenarios should update_root_password have been
