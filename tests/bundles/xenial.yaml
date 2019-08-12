@@ -8,7 +8,7 @@ applications:
     charm: ../../../percona-cluster
     num_units: 1
   keystone:
-    charm: cs:~openstack-charmers-next/keystone
+    charm: cs:keystone
     num_units: 1
     options:
       token-expiration: 60
