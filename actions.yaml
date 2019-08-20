@@ -36,6 +36,16 @@ delete-user:
   required:
     - username
 
+create-database:
+  description: >
+    Creates an empty database within the instance
+  params:
+    database:
+      type: string
+      description: The name of the database to create
+  required:
+    - database
+
 pause:
   description: Pause the MySQL service.
 resume:

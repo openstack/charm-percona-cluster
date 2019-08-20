@@ -5,6 +5,7 @@ import sys
 import subprocess
 import traceback
 import MySQLdb
+from contextlib import contextmanager
 from time import gmtime, strftime
 
 _path = os.path.dirname(os.path.realpath(__file__))
@@ -33,82 +34,125 @@ from charmhelpers.core.host import (
     CompareHostReleases,
     lsb_release,
 )
+from charmhelpers.contrib.database.mysql import MySQLHelper
 
 import percona_utils
 import percona_hooks
 
+@contextmanager
+def open_mysql_cursor(connection):
+    """ Opens up a new MySQL cursor """
+
+    cur = connection.cursor()
+    yield cur
+    cur.close()
+
+@contextmanager
+def open_mysql():
+    """ Opens up a new MySQL connection """
+
+    db_helper = MySQLHelper(
+        rpasswdf_template='/var/lib/mysql/mysql.passwd',
+        upasswdf_template='/var/lib/mysql/mysql-{}.passwd',
+        delete_ondisk_passwd_file=False
+    )
+    password = db_helper.get_mysql_root_password()
+
+    con = MySQLdb.connect(
+        host="localhost",
+        user="root",
+        passwd=password,
+    )
+    yield con
+    con.close()
+
+def validate_parameters(params, required_keys):
+    for key in required_keys:
+        if not params.get(key):
+            raise Exception("Missing required parameter: {}".format(key))
+
+def user_exists(connection, username):
+    with open_mysql_cursor(connection) as cursor:
+        cursor.execute(
+            "SELECT count(1) FROM mysql.user WHERE user = %s ;",
+            (username, )
+        )
+        if cursor.fetchone()[0] == 1:
+            return True
+    return False
+
 
 def create_user(params):
+    validate_parameters(params, ["username", "password"])
+    username = params["username"]
+    password = params["password"]
 
-    if not params['username']:
-        action_fail('No username specified')
-        return
-    if not params['password']:
-        action_fail('No password specified')
-        return
-    
-    rootpw = _get_password("root-password")
-    con = MySQLdb.connect(host = 'localhost', 
-                       user = 'root', 
-                       passwd = rootpw)
-    con.autocommit = True
+    with open_mysql() as con:
+        if user_exists(con, username):
+            raise Exception("User already exists: {}".format(username))
 
-    cur = con.cursor()
-    cur.execute("""GRANT ALL PRIVILEGES ON *.* TO '{}'@'%' IDENTIFIED BY '{}';"""
-                    .format(params['username'], params['password']))
-    action_set(dict(result='User created'))
+        with open_mysql_cursor(con) as cursor:
+            cursor.execute(
+                "CREATE USER %s@'%%' IDENTIFIED BY %s ;",
+                (username, password)
+            )
+            cursor.execute(
+                "GRANT ALL PRIVILEGES ON *.* TO %s@'%%' ;",
+                (username, )
+            )
+    action_set(dict(result="Created user: {}".format(username)))
 
 def set_user_password(params):
+    validate_parameters(params, ["username", "password"])
 
-    if not params['username']:
-        action_fail('No username specified')
-        return
-    if not params['password']:
-        action_fail('No password specified')
-        return
-    rootpw = _get_password("root-password")
-    con = MySQLdb.connect(host = 'localhost', 
-                       user = 'root', 
-                       passwd = rootpw)
-    con.autocommit = True
+    username = params["username"]
+    password = params["password"]
+    with open_mysql() as con:
+        if not user_exists(con, username):
+            raise Exception("User does not exist: {}".format(username))
 
-    cur = con.cursor()
-
-    cur.execute("""SELECT 1 FROM mysql.user WHERE user = '{}'"""
-            .format(params['username']))
-    if cur.fetchone()[0] == 0:
-        action_fail('User does not exist')
-        return
-    
-    cur.execute("""UPDATE mysql.user SET Password=PASSWORD('{}') WHERE user='{}'"""
-                    .format( params['password'], params['username']))
-    action_set(dict(result='User password updated'))
+        with open_mysql_cursor(con) as cursor:
+            cursor.execute(
+                "ALTER USER %s@'%%' IDENTIFIED BY %s ;",
+                (username, password)
+            )
+    action_set(dict(result="Password updated for user: {}".format(username))) 
 
 
 def delete_user(params):
+    validate_parameters(params, ["username", ])
 
-    if not params['username']:
-        action_fail('No username specified')
-        return
-    
-    rootpw = _get_password("root-password")
-    con = MySQLdb.connect(host = 'localhost', 
-                       user = 'root', 
-                       passwd = rootpw)
-    con.autocommit = True
+    username = params["username"]
+    with open_mysql() as con:
+        if not user_exists(con, username):
+            action_set(dict(result="User does not exist: {}".format(username)))
+            return
 
-    cur = con.cursor()
-    cur.execute("""SELECT 1 FROM mysql.user WHERE user = '{}'"""
-            .format(params['username']))
-    if cur.fetchone()[0] == 0:
-        action_fail('User does not exist')
-        return
-        
-    cur.execute("""DELETE FROM mysql.user WHERE User = '{}'"""
-            .format(params['username']))
+        with open_mysql_cursor(con) as cursor:
+            cursor.execute(
+                "DELETE FROM mysql.user WHERE User = %s ;",
+                (username, )
+            )
+    action_set(dict(result="Deleted user: {}".format(username))) 
 
-    action_set(dict(result='User deleted'))
 
+def create_database(params):
+    validate_parameters(params, ["database", ])
+
+    database_name = params["database"]
+    with open_mysql() as con:
+        with open_mysql_cursor(con) as cursor:
+            cursor.execute(
+                "SELECT count(1) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = %s ;",
+                (database_name, )
+            )
+            if cursor.fetchone()[0] != 0:
+                action_set(dict(
+                    result="Database already exists: {}".format(database_name)
+                ))
+                return
+            cursor.execute("CREATE DATABASE `{}` ;".format(database_name))
+    action_set(dict(result="Database created: {}".format(database_name))) 
 
 def pause(args):
     """Pause the MySQL service.
@@ -235,8 +279,8 @@ def notify_bootstrapped(args):
 ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
            "complete-cluster-series-upgrade": complete_cluster_series_upgrade,
            "bootstrap-pxc": bootstrap_pxc,
-           "notify-bootstrapped": notify_bootstrapped}
-            "create-user": create_user, "delete-user": delete_user, "set-user-password": set_user_password}
+           "notify-bootstrapped": notify_bootstrapped,
+           "create-user": create_user, "delete-user": delete_user, "set-user-password": set_user_password, "create-database": create_database,}
 
 
 def main(args):
