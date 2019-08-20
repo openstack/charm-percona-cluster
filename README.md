@@ -155,7 +155,7 @@ with Juju 2.0 and above.
 You can ensure that database connections and cluster peer communication are bound to
 specific network spaces by binding the appropriate interfaces:
 
-    juju deploy percona-cluster --bind "shared-db=internal-space,cluster=internal-space"
+    juju deploy percona-cluster --bind "shared-db=internal-space cluster=internal-space"
 
 alternatively these can also be provided as part of a juju native bundle configuration:
 
