@@ -1,6 +1,6 @@
 # Overview
 
-This directory provides Amulet tests to verify basic deployment functionality
+This directory provides Zaza tests to verify basic deployment functionality
 from the perspective of this charm, its requirements and its features, as
 exercised in a subset of the full OpenStack deployment test bundle topology.
 
