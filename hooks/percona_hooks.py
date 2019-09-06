@@ -560,7 +560,10 @@ def config_changed():
         # Skip if cluster_series_upgrading
         # Speed up cluster process by bootstrapping when the leader has
         # bootstrapped if we have expected number of peers
-        if leader_ip not in hosts:
+        # However, in a cold boot scenario do not add the "old" leader
+        # when it matches this host.
+        if (leader_ip not in hosts and
+                leader_ip != get_cluster_host_ip()):
             # Fix Bug #1738896
             hosts = [leader_ip] + hosts
         log("Leader is bootstrapped - configuring mysql on this node",

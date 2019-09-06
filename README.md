@@ -71,7 +71,6 @@ requirements and resources available.
 [1] http://dev.mysql.com/doc/relnotes/mysql/5.6/en/news-5-6-6.html#mysqld-5-6-6-performance-schema
 [2] http://www.mysqlcalculator.com/
 
-
 ## HA/Clustering
 
 When more than one unit of the charm is deployed with the hacluster charm
@@ -119,10 +118,11 @@ At a minimum, the config option 'dns-ha' must be set to true, the
 defined in order to use DNS HA.
 
 The charm will throw an exception in the following circumstances:
-If neither 'vip' nor 'dns-ha' is set and the charm is related to hacluster
-If both 'vip' and 'dns-ha' are set, as they are mutually exclusive
-If 'dns-ha' is set and 'os-access-hostname' is not set
-If the 'access' binding is not set and 'dns-ha' is set, consumers of the db may not be allowed to connect
+
+- If neither 'vip' nor 'dns-ha' is set and the charm is related to hacluster
+- If both 'vip' and 'dns-ha' are set, as they are mutually exclusive
+- If 'dns-ha' is set and 'os-access-hostname' is not set
+- If the 'access' binding is not set and 'dns-ha' is set, consumers of the db may not be allowed to connect
 
 ## MySQL asynchronous replication
 
@@ -155,7 +155,7 @@ with Juju 2.0 and above.
 You can ensure that database connections and cluster peer communication are bound to
 specific network spaces by binding the appropriate interfaces:
 
-    juju deploy percona-cluster --bind "shared-db=internal-space,cluster=internal-space"
+    juju deploy percona-cluster --bind "shared-db=internal-space cluster=internal-space"
 
 alternatively these can also be provided as part of a juju native bundle configuration:
 
@@ -166,14 +166,17 @@ alternatively these can also be provided as part of a juju native bundle configu
         shared-db: internal-space
         cluster: internal-space
 
-The 'cluster' endpoint binding is used to determine which network space units within the
-percona-cluster deployment should use for communication with each other; the 'shared-db'
-endpoint binding is used to determine which network space should be used for access to
-MySQL databases services from other charms.
+The 'cluster' endpoint binding is used to determine which network space units
+within the percona-cluster deployment should use for communication with each
+other; the 'shared-db' endpoint binding is used to determine which network
+space should be used for access to MySQL databases services from other charms.
 
-**NOTE:** Spaces must be configured in the underlying provider prior to attempting to use them.
+**NOTE:** Spaces must be configured in the underlying provider prior to
+attempting to use them.
 
-**NOTE:** Existing deployments using the access-network configuration option will continue to function; this option is preferred over any network space binding provided for the 'shared-db' relation if set.
+**NOTE:** Existing deployments using the access-network configuration option
+will continue to function; this option is preferred over any network space
+binding provided for the 'shared-db' relation if set.
 
 # Limitations
 
@@ -188,25 +191,23 @@ slowest node you have in your deployment.
 
 1. Take a backup of all the databases
 
-```sh
-juju run-action mysql/N backup
-```
- * Get that backup off the mysql/N unit and somehwere safe.
-```sh
-juju scp -- -r mysql/N:/opt/backups/mysql /path/to/local/backup/dir
-```
+    juju run-action mysql/N backup
+
+ * Get that backup off the mysql/N unit and somewhere safe.
+
+    juju scp -- -r mysql/N:/opt/backups/mysql /path/to/local/backup/dir
 
 2. Pause all non-leader units and corresponding hacluster units.
-The leader node will remain up for the time being. This is to ensure the leader has the latest sequence number and will be considered the most up to date by the cluster.
-```sh
-juju run-action hacluster/N pause
-juju run-action percona-cluster/N pause
-```
+The leader node will remain up for the time being. This is to ensure the leader
+has the latest sequence number and will be considered the most up to date by
+the cluster.
+
+    juju run-action hacluster/N pause
+    juju run-action percona-cluster/N pause
 
 3. Prepare the leader node
-```sh
-juju upgrade-series prepare $MACHINE_NUMBER $SERIES
-```
+
+    juju upgrade-series prepare $MACHINE_NUMBER $SERIES
 
 4. Administratively perform the upgrade.
 * do-release-upgrade plus any further steps administratively required steps for an upgrade.
@@ -214,14 +215,12 @@ juju upgrade-series prepare $MACHINE_NUMBER $SERIES
 5. Reboot
 
 6. Complete the series upgrade on the leader:
-```sh
-juju upgrade-series complete $MACHINE_NUMBER
-```
+
+    juju upgrade-series complete $MACHINE_NUMBER
 
 7. Administratively validate the leader node database is up and running
 * Connect to the database and check for expected data
 * Review "SHOW GLOBAL STATUS;"
-
 
 8. Upgrade the non-leader nodes one at a time following the same pattern summarized bellow:
 
@@ -235,17 +234,16 @@ juju upgrade-series complete $MACHINE_NUMBER
 Run action on leader node.
 This action informs each node of the cluster the upgrade process is complete cluster wide.
 This also updates mysql configuration with all peers in the cluster.
-```sh
-juju run-action mysql/N complete-cluster-series-upgrade
-```
+
+    juju run-action mysql/N complete-cluster-series-upgrade
 
 10. Set future instance to the new series and set the source origin
-```sh
-juju set-series percona-cluster xenial
-juju config mysql source=distro
-```
+
+    juju set-series percona-cluster xenial
+    juju config mysql source=distro
 
 ## Documentation
+
 * https://www.percona.com/doc/percona-xtradb-cluster/LATEST/howtos/upgrade_guide.html
 * https://www.percona.com/doc/percona-xtradb-cluster/5.6/upgrading_guide_55_56.html
 * https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/
@@ -270,16 +268,14 @@ this information in the juju status.
 
 Example `juju status` after a cold boot of `percona-cluster`
 
-```sh
-Unit                Workload  Agent  Machine  Public address  Ports     Message
-keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
-percona-cluster/0   blocked   idle   1        10.5.0.20       3306/tcp  MySQL is down. Sequence Number: 355. Safe To Bootstrap: 0
-  hacluster/0       active    idle            10.5.0.20                 Unit is ready and clustered
-percona-cluster/1   blocked   idle   2        10.5.0.17       3306/tcp  MySQL is down. Sequence Number: 355. Safe To Bootstrap: 0
-  hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
-percona-cluster/2*  blocked   idle   3        10.5.0.27       3306/tcp  MySQL is down. Sequence Number: 355. Safe To Bootstrap: 0
-  hacluster/2*      active    idle            10.5.0.27                 Unit is ready and clustered
-```
+    Unit                Workload  Agent  Machine  Public address  Ports     Message
+    keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
+    percona-cluster/0   blocked   idle   1        10.5.0.20       3306/tcp  MySQL is down. Sequence Number: 355. Safe To Bootstrap: 0
+      hacluster/0       active    idle            10.5.0.20                 Unit is ready and clustered
+    percona-cluster/1   blocked   idle   2        10.5.0.17       3306/tcp  MySQL is down. Sequence Number: 355. Safe To Bootstrap: 0
+      hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
+    percona-cluster/2*  blocked   idle   3        10.5.0.27       3306/tcp  MySQL is down. Sequence Number: 355. Safe To Bootstrap: 0
+      hacluster/2*      active    idle            10.5.0.27                 Unit is ready and clustered
 
 *Note*: An application leader is denoted by any asterisk in the Unit column.
 
@@ -289,25 +285,21 @@ bootstrap from any unit we choose.
 In the next example the percona-cluster/2 node has the highest sequence number
 so we must choose that node to avoid data loss.
 
-```sh
-Unit                Workload  Agent  Machine  Public address  Ports     Message
-keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
-percona-cluster/0*  blocked   idle   1        10.5.0.20       3306/tcp  MySQL is down. Sequence Number: 1318. Safe To Bootstrap: 0
-  hacluster/0*      active    idle            10.5.0.20                 Unit is ready and clustered
-percona-cluster/1   blocked   idle   2        10.5.0.17       3306/tcp  MySQL is down. Sequence Number: 1318. Safe To Bootstrap: 0
-  hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
-percona-cluster/2   blocked   idle   3        10.5.0.27       3306/tcp  MySQL is down. Sequence Number: 1325. Safe To Bootstrap: 0
-  hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
-```
+    Unit                Workload  Agent  Machine  Public address  Ports     Message
+    keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
+    percona-cluster/0*  blocked   idle   1        10.5.0.20       3306/tcp  MySQL is down. Sequence Number: 1318. Safe To Bootstrap: 0
+      hacluster/0*      active    idle            10.5.0.20                 Unit is ready and clustered
+    percona-cluster/1   blocked   idle   2        10.5.0.17       3306/tcp  MySQL is down. Sequence Number: 1318. Safe To Bootstrap: 0
+      hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
+    percona-cluster/2   blocked   idle   3        10.5.0.27       3306/tcp  MySQL is down. Sequence Number: 1325. Safe To Bootstrap: 0
+      hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
 
 ## Bootstrap the node with the highest sequence number
 
 Run the `bootstrap-pxc` action on the node with the highest sequence number. In
 this example, it is unit percona-cluster/2, which happens to be a non-leader.
 
-```sh
-juju run-action --wait percona-cluster/2 bootstrap-pxc
-```
+    juju run-action --wait percona-cluster/2 bootstrap-pxc
 
 ## Notify the cluster of the new bootstrap UUID
 
@@ -315,16 +307,14 @@ In the vast majority of cases, once the `bootstrap-pxc` action has been run and
 the model has settled the output to the `juju status` command will now look
 like this:
 
-```sh
-Unit                Workload  Agent  Machine  Public address  Ports     Message
-keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
-percona-cluster/0*  waiting   idle   1        10.5.0.20       3306/tcp  Unit waiting for cluster bootstrap
-  hacluster/0*      active    idle            10.5.0.20                 Unit is ready and clustered
-percona-cluster/1   waiting   idle   2        10.5.0.17       3306/tcp  Unit waiting for cluster bootstrap
-  hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
-percona-cluster/2   waiting   idle   3        10.5.0.27       3306/tcp  Unit waiting for cluster bootstrap
-  hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
-```
+    Unit                Workload  Agent  Machine  Public address  Ports     Message
+    keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
+    percona-cluster/0*  waiting   idle   1        10.5.0.20       3306/tcp  Unit waiting for cluster bootstrap
+      hacluster/0*      active    idle            10.5.0.20                 Unit is ready and clustered
+    percona-cluster/1   waiting   idle   2        10.5.0.17       3306/tcp  Unit waiting for cluster bootstrap
+      hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
+    percona-cluster/2   waiting   idle   3        10.5.0.27       3306/tcp  Unit waiting for cluster bootstrap
+      hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
 
 If you observe the above output ("Unit waiting for cluster bootstrap") then the
 `notify-bootstrapped` action needs to be run on a unit. There are two
@@ -338,24 +328,18 @@ possibilities:
 In the current example, the first action was run on a non-leader so we'll run
 the second action on the leader, percona-cluster/0:
 
-```sh
-juju run-action percona-cluster/0 notify-bootstrapped --wait
-```
+    juju run-action percona-cluster/0 notify-bootstrapped --wait
 
-After the model settles, the ouput should show all nodes in active and ready
+After the model settles, the output should show all nodes in active and ready
 state:
 
-```sh
-Unit                Workload  Agent  Machine  Public address  Ports     Message
-keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
-percona-cluster/0*  active    idle   1        10.5.0.20       3306/tcp  Unit is ready
-  hacluster/0*      active    idle            10.5.0.20                 Unit is ready and clustered
-percona-cluster/1   active    idle   2        10.5.0.17       3306/tcp  Unit is ready
-  hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
-percona-cluster/2   active    idle   3        10.5.0.27       3306/tcp  Unit is ready
-  hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
-```
+    Unit                Workload  Agent  Machine  Public address  Ports     Message
+    keystone/0*         active    idle   0        10.5.0.32       5000/tcp  Unit is ready
+    percona-cluster/0*  active    idle   1        10.5.0.20       3306/tcp  Unit is ready
+      hacluster/0*      active    idle            10.5.0.20                 Unit is ready and clustered
+    percona-cluster/1   active    idle   2        10.5.0.17       3306/tcp  Unit is ready
+      hacluster/1       active    idle            10.5.0.17                 Unit is ready and clustered
+    percona-cluster/2   active    idle   3        10.5.0.27       3306/tcp  Unit is ready
+      hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
 
 The percona-cluster is now back to a clustered and healthy state.
-
-### Documentation
