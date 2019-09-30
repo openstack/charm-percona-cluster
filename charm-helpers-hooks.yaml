@@ -18,3 +18,4 @@ include:
     - contrib.database
     - contrib.charmsupport
     - contrib.hardening|inc=*
+    - contrib.openstack.policyd

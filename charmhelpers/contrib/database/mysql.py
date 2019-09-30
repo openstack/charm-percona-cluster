@@ -296,11 +296,18 @@ class MySQLHelper(object):
         """Retrieve or generate mysql root password for service units."""
         return self.get_mysql_password(username=None, password=password)
 
-    def set_mysql_password(self, username, password):
+    def set_mysql_password(self, username, password, current_password=None):
         """Update a mysql password for the provided username changing the
         leader settings
 
         To update root's password pass `None` in the username
+
+        :param username: Username to change password of
+        :type username: str
+        :param password: New password for user.
+        :type password: str
+        :param current_password: Existing password for user.
+        :type current_password: str
         """
 
         if username is None:
@@ -311,14 +318,15 @@ class MySQLHelper(object):
         # password, so leader-get is more reliable source than
         # config.previous('root-password').
         rel_username = None if username == 'root' else username
-        cur_passwd = self.get_mysql_password(rel_username)
+        if not current_password:
+            current_password = self.get_mysql_password(rel_username)
 
         # password that needs to be set
         new_passwd = password
 
         # update password for all users (e.g. root@localhost, root@::1, etc)
         try:
-            self.connect(user=username, password=cur_passwd)
+            self.connect(user=username, password=current_password)
             cursor = self.connection.cursor()
         except MySQLdb.OperationalError as ex:
             raise MySQLSetPasswordError(('Cannot connect using password in '
@@ -369,8 +377,18 @@ class MySQLHelper(object):
                     level=DEBUG)
                 leader_set(settings={key: new_passwd})
 
-    def set_mysql_root_password(self, password):
-        self.set_mysql_password('root', password)
+    def set_mysql_root_password(self, password, current_password=None):
+        """Update mysql root password changing the leader settings
+
+        :param password: New password for user.
+        :type password: str
+        :param current_password: Existing password for user.
+        :type current_password: str
+        """
+        self.set_mysql_password(
+            'root',
+            password,
+            current_password=current_password)
 
     def normalize_address(self, hostname):
         """Ensure that address returned is an IP address (i.e. not fqdn)"""
