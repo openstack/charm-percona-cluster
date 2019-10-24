@@ -8,7 +8,7 @@ applications:
     options:
       min-cluster-size: 3
   hacluster:
-    charm: cs:~openstack-charmers-next/hacluster
+    charm: cs:hacluster
     num_units: 0
     options:
       cluster_count: 3
