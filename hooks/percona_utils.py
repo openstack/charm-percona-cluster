@@ -1506,20 +1506,37 @@ def check_mysql_connection(password=None):
         return False
 
 
+def get_grastate():
+    """Get GR State.
+
+    Read the grastate yaml file and return dictionary.
+
+    :returns: dict grastate data
+    """
+
+    grastate_file = os.path.join(resolve_data_dir(), "grastate.dat")
+    if os.path.exists(grastate_file):
+        try:
+            with open(grastate_file, 'r') as f:
+                return yaml.safe_load(f)
+        except yaml.reader.ReaderError:
+            pass
+
+    # Something is amiss but we should not error out
+    # return expected dictionary but zeroed out
+    return {"seqno": "0", "safe_to_bootstrap": "0"}
+
+
 def get_grastate_seqno():
     """Get GR State safe sequence number.
 
     Read the grastate yaml file to determine the sequence number for this
     instance.
 
-    :returns: int Sequence Number
+    :returns: str Sequence Number
     """
 
-    grastate_file = os.path.join(resolve_data_dir(), "grastate.dat")
-    if os.path.exists(grastate_file):
-        with open(grastate_file, 'r') as f:
-            grastate = yaml.safe_load(f)
-        return grastate.get("seqno")
+    return get_grastate().get("seqno")
 
 
 def get_grastate_safe_to_bootstrap():
@@ -1528,14 +1545,10 @@ def get_grastate_safe_to_bootstrap():
     Read the grastate yaml file to determine if it is safe to bootstrap from
     this instance.
 
-    :returns: int Safe to bootstrap 0 or 1
+    :returns: str Safe to bootstrap 0 or 1
     """
 
-    grastate_file = os.path.join(resolve_data_dir(), "grastate.dat")
-    if os.path.exists(grastate_file):
-        with open(grastate_file, 'r') as f:
-            grastate = yaml.safe_load(f)
-        return grastate.get("safe_to_bootstrap")
+    return get_grastate().get("safe_to_bootstrap")
 
 
 def set_grastate_safe_to_bootstrap():

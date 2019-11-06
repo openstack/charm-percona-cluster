@@ -439,26 +439,30 @@ class UtilsTests(CharmTestCase):
 
     @mock.patch("percona_utils.resolve_data_dir")
     @mock.patch("percona_utils.os")
-    def test_get_grastate_seqno(self, _os, _resolve_dd):
-        _resolve_dd.return_value = "/tmp"
-        _seqno = "25"
+    def test_get_grastate(self, _os, _resolve_dd):
+        _bootstrap = "1"
+        _seqno = "5422"
+        _data = {"seqno": _seqno, "safe_to_bootstrap": _bootstrap}
         _os.path.exists.return_value = True
-        self.yaml.safe_load.return_value = {"seqno": _seqno}
-        with patch_open() as (_open, _file):
-            _open.return_value = _file
-            self.assertEqual(_seqno, percona_utils.get_grastate_seqno())
-
-    @mock.patch("percona_utils.resolve_data_dir")
-    @mock.patch("percona_utils.os")
-    def test_get_grastate_safe_to_bootstrap(self, _os, _resolve_dd):
         _resolve_dd.return_value = "/tmp"
-        _bootstrap = "0"
-        _os.path.exists.return_value = True
-        self.yaml.safe_load.return_value = {"safe_to_bootstrap": _bootstrap}
+        self.yaml.safe_load.return_value = _data
         with patch_open() as (_open, _file):
             _open.return_value = _file
             self.assertEqual(
-                _bootstrap, percona_utils.get_grastate_safe_to_bootstrap())
+                _data, percona_utils.get_grastate())
+
+    @mock.patch("percona_utils.get_grastate")
+    def test_get_grastate_seqno(self, _get_grastate):
+        _seqno = "25"
+        _get_grastate.return_value = {"seqno": _seqno}
+        self.assertEqual(_seqno, percona_utils.get_grastate_seqno())
+
+    @mock.patch("percona_utils.get_grastate")
+    def test_get_grastate_safe_to_bootstrap(self, _get_grastate):
+        _bootstrap = "0"
+        _get_grastate.return_value = {"safe_to_bootstrap": _bootstrap}
+        self.assertEqual(
+            _bootstrap, percona_utils.get_grastate_safe_to_bootstrap())
 
     @mock.patch("percona_utils.resolve_data_dir")
     @mock.patch("percona_utils.os")

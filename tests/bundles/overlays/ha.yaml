@@ -6,6 +6,7 @@ applications:
   percona-cluster:
     num_units: 3
     options:
+      vip: {{ TEST_VIP00 }}
       min-cluster-size: 3
   hacluster:
     charm: cs:~openstack-charmers-next/hacluster
