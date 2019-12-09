@@ -207,7 +207,7 @@ the cluster.
 
 3. Prepare the leader node
 
-    juju upgrade-series prepare $MACHINE_NUMBER $SERIES
+    juju upgrade-series $MACHINE_NUMBER prepare $SERIES
 
 4. Administratively perform the upgrade.
 * do-release-upgrade plus any further steps administratively required steps for an upgrade.
@@ -216,7 +216,7 @@ the cluster.
 
 6. Complete the series upgrade on the leader:
 
-    juju upgrade-series complete $MACHINE_NUMBER
+    juju upgrade-series $MACHINE_NUMBER complete
 
 7. Administratively validate the leader node database is up and running
 * Connect to the database and check for expected data
@@ -224,10 +224,10 @@ the cluster.
 
 8. Upgrade the non-leader nodes one at a time following the same pattern summarized bellow:
 
-* juju upgrade-series prepare $MACHINE_NUMBER $SERIES
+* juju upgrade-series $MACHINE_NUMBER prepare $SERIES
 * Administratively Upgrade
 * Reboot
-* juju upgrade-series complete $MACHINE_NUMBER
+* juju upgrade-series $MACHINE_NUMBER complete
 * Validate
 
 9. Finalize the upgrade

@@ -461,6 +461,12 @@ def series_upgrade():
 
     resume_unit_helper(register_configs())
 
+    # finally update the sstuser if needed.
+    # BUG: #1838044
+    _sst_password = sst_password()
+    if _sst_password:
+        configure_sstuser(_sst_password)
+
 
 @hooks.hook('upgrade-charm')
 @harden()
