@@ -106,6 +106,8 @@ HA. If multiple networks are being used, a VIP should be provided for each
 network, separated by spaces. Optionally, vip_iface or vip_cidr may be
 specified.
 
+### DNS HA
+
 To use DNS high availability there are several prerequisites. However, DNS HA
 does not require the clustered nodes to be on the same subnet.
 Currently the DNS HA feature is only available for MAAS 2.0 or greater
@@ -123,6 +125,18 @@ The charm will throw an exception in the following circumstances:
 - If both 'vip' and 'dns-ha' are set, as they are mutually exclusive
 - If 'dns-ha' is set and 'os-access-hostname' is not set
 - If the 'access' binding is not set and 'dns-ha' is set, consumers of the db may not be allowed to connect
+
+#### List of DNS HA bindings
+
+As mentioned above, at minimum the `access` binding should be set. If this is not set, the charm will default to `private-address`. 
+
+The list is as follows:
+
+- access: Binding for `os-access-hostname`
+- internal: Binding for `os-internal-hostname`
+- public: Binding for `os-public-hostname`
+- admin: Binding for `os-admin-hostname`
+
 
 ## MySQL asynchronous replication
 
