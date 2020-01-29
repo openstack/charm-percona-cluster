@@ -24,6 +24,8 @@ from charmhelpers.core.hookenv import (
     action_get,
     action_set,
     action_fail,
+    relation_ids,
+    relation_set,
     leader_set,
     is_leader,
 )
@@ -31,6 +33,10 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     CompareHostReleases,
     lsb_release,
+)
+
+from charmhelpers.contrib.openstack.utils import (
+    DB_SERIES_UPGRADING_KEY,
 )
 
 import percona_utils
@@ -67,6 +73,10 @@ def complete_cluster_series_upgrade(args):
         # Unset cluster_series_upgrading
         leader_set(cluster_series_upgrading="")
         leader_set(cluster_series_upgrade_leader="")
+        for r_id in relation_ids('shared-db'):
+            relation_set(
+                relation_id=r_id,
+                relation_settings={DB_SERIES_UPGRADING_KEY: None})
     percona_hooks.config_changed()
 
 

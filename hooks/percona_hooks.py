@@ -79,6 +79,7 @@ from charmhelpers.contrib.charmsupport import nrpe
 from charmhelpers.contrib.hardening.harden import harden
 from charmhelpers.contrib.hardening.mysql.checks import run_mysql_checks
 from charmhelpers.contrib.openstack.utils import (
+    DB_SERIES_UPGRADING_KEY,
     is_unit_paused_set,
     is_unit_upgrading_set,
     set_unit_upgrading,
@@ -371,6 +372,10 @@ def prepare():
         leader_set(cluster_series_upgrading=True)
         leader_set(
             cluster_series_upgrade_leader=get_relation_ip('cluster'))
+        for r_id in relation_ids('shared-db'):
+            relation_set(
+                relation_id=r_id,
+                relation_settings={DB_SERIES_UPGRADING_KEY: True})
     else:
         hosts = [leader_get('cluster_series_upgrade_leader')]
 
@@ -977,6 +982,11 @@ def leader_settings_changed():
     # NOTE(tkurek): deconfigure old leader
     if relation_ids('slave'):
         deconfigure_slave()
+    if not leader_get('cluster_series_upgrading'):
+        for r_id in relation_ids('shared-db'):
+            relation_set(
+                relation_id=r_id,
+                relation_settings={DB_SERIES_UPGRADING_KEY: None})
 
 
 @hooks.hook('leader-elected')

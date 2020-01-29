@@ -723,7 +723,7 @@ class MySQL8Helper(MySQLHelper):
         try:
             cursor.execute("GRANT CREATE USER ON *.* TO '{}'@'{}' WITH GRANT "
                            "OPTION".format(db_user, remote_ip))
-            cursor.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON "
+            cursor.execute("GRANT SELECT, INSERT, UPDATE, DELETE, EXECUTE ON "
                            "mysql_innodb_cluster_metadata.* TO '{}'@'{}'"
                            .format(db_user, remote_ip))
             cursor.execute("GRANT SELECT ON mysql.user TO '{}'@'{}'"

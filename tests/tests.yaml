@@ -1,9 +1,5 @@
 charm_name: "percona-cluster"
 tests:
- - disco_model:
-   - zaza.openstack.charm_tests.mysql.tests.PerconaClusterColdStartTest
-   - zaza.openstack.charm_tests.mysql.tests.PerconaClusterCharmTests
-   - zaza.openstack.charm_tests.mysql.tests.PerconaClusterScaleTests
  - bionic_model:
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterColdStartTest
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterCharmTests
@@ -17,7 +13,6 @@ target_deploy_status:
 gate_bundles:
   - bionic_model: bionic-ha
   - xenial_model: xenial-ha
-  - disco_model: disco-ha
 smoke_bundles:
   - bionic_model: bionic-ha
 dev_bundles:
