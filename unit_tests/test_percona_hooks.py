@@ -619,6 +619,48 @@ class TestInstallPerconaXtraDB(CharmTestCase):
         self.run_mysql_checks.assert_not_called()
 
 
+class TestSeriesUpgrade(CharmTestCase):
+    TO_PATCH = [
+        'register_configs',
+        'pause_unit_helper',
+        'set_unit_upgrading',
+        'leader_get',
+        'leader_set',
+        'relation_ids',
+        'relation_set',
+        'get_relation_ip',
+        'render_config',
+    ]
+
+    def setUp(self):
+        CharmTestCase.setUp(self, hooks, self.TO_PATCH)
+
+    def test_prepare_leader(self):
+        self.register_configs.return_value = 'registered_configs'
+        self.leader_get.return_value = None
+        self.get_relation_ip.return_value = '10.0.0.10'
+        self.relation_ids.return_value = ['relid:1']
+        hooks.prepare()
+        self.pause_unit_helper.assert_called_once_with('registered_configs')
+        self.set_unit_upgrading.assert_called_once_with()
+        leader_set_calls = [
+            mock.call(cluster_series_upgrading=True),
+            mock.call(cluster_series_upgrade_leader='10.0.0.10')]
+        self.leader_set.assert_has_calls(leader_set_calls)
+        self.relation_set.assert_called_once_with(
+            relation_id='relid:1',
+            relation_settings={'cluster-series-upgrading': True})
+        self.render_config.assert_called_once_with([])
+
+    def test_prepare_non_leader(self):
+        self.register_configs.return_value = 'registered_configs'
+        self.leader_get.return_value = '10.0.0.10'
+        hooks.prepare()
+        self.pause_unit_helper.assert_called_once_with('registered_configs')
+        self.set_unit_upgrading.assert_called_once_with()
+        self.render_config.assert_called_once_with(['10.0.0.10'])
+
+
 class TestUpgradeCharm(CharmTestCase):
     TO_PATCH = [
         'config',

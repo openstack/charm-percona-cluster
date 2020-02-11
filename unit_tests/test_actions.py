@@ -48,17 +48,27 @@ class ResumeTestCase(CharmTestCase):
 class CompleteClusterSeriesUpgrade(CharmTestCase):
 
     def setUp(self):
+        to_patch = [
+            "is_leader",
+            "config_changed",
+            "leader_set",
+            "relation_ids",
+            "relation_set"]
         super(CompleteClusterSeriesUpgrade, self).setUp(
-            actions, ["config_changed", "is_leader", "leader_set"])
+            actions, to_patch)
 
     def test_leader_complete_series_upgrade(self):
         self.is_leader.return_value = True
 
+        self.relation_ids.return_value = ['relid:1']
         calls = [mock.call(cluster_series_upgrading=""),
                  mock.call(cluster_series_upgrade_leader="")]
         actions.complete_cluster_series_upgrade([])
         self.leader_set.assert_has_calls(calls)
         self.config_changed.assert_called_once_with()
+        self.relation_set.assert_called_once_with(
+            relation_id='relid:1',
+            relation_settings={'cluster-series-upgrading': None})
 
     def test_non_leader_complete_series_upgrade(self):
         self.is_leader.return_value = False

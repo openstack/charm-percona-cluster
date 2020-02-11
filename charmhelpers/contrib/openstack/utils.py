@@ -293,6 +293,10 @@ PACKAGE_CODENAMES = {
 
 DEFAULT_LOOPBACK_SIZE = '5G'
 
+DB_SERIES_UPGRADING_KEY = 'cluster-series-upgrading'
+
+DB_MAINTENANCE_KEYS = [DB_SERIES_UPGRADING_KEY]
+
 
 class CompareOpenStackReleases(BasicStringComparator):
     """Provide comparisons of OpenStack releases.
