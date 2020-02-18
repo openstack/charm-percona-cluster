@@ -1,5 +1,6 @@
 ''' General utilities for percona '''
 import collections
+import datetime
 import subprocess
 from subprocess import Popen, PIPE
 import socket
@@ -15,6 +16,7 @@ import time
 import yaml
 
 from charmhelpers.core.decorators import retry_on_exception
+from charmhelpers.core.templating import render
 from charmhelpers.core.host import (
     lsb_release,
     mkdir,
@@ -1605,3 +1607,85 @@ def maybe_notify_bootstrapped():
         cluster_state_uuid = get_wsrep_value('wsrep_cluster_state_uuid')
         if lead_cluster_state_uuid == cluster_state_uuid:
             notify_bootstrapped(cluster_uuid=cluster_state_uuid)
+
+
+def set_pxc_strict_mode(mode):
+    """Set PXC Strict Mode.
+
+    :param mode: Strict mode: DISALBED, PERMISSIVE, ENFORCING or MASTER
+    :type backup_dir: str
+    :raises: Raises ValueError if mode is not a valide parameter
+    :raises: Raises MySQLdb.OperationalError if SQL is not successful
+    :returns: None
+    :rtype: None
+    """
+    _VALID_PARAMS = ["DISABLED", "PERMISSIVE", "ENFORCING", "MASTER"]
+    mode = mode.upper()
+    if mode not in _VALID_PARAMS:
+        raise ValueError(
+            "'{}' is not a valid parameter for pxc_strict_mode. "
+            "Valid options are {}.".format(mode, ", ".join(_VALID_PARAMS)))
+    m_helper = get_db_helper()
+    m_helper.connect(password=m_helper.get_mysql_root_password())
+    m_helper.execute("SET GLOBAL pxc_strict_mode='{}'".format(mode))
+
+
+def write_root_my_cnf():
+    """Write root my.cnf
+
+    :side effect: calls render()
+    :returns: None
+    :rtype: None
+    """
+    my_cnf_template = "root-my.cnf"
+    root_my_cnf = "/root/.my.cnf"
+    context = {"mysql_passwd": leader_get("mysql.passwd")}
+    render(my_cnf_template, root_my_cnf, context, perms=0o600)
+
+
+def mysqldump(backup_dir, databases=None):
+    """Execute a MySQL dump
+
+    :param backup_dir: Path to the backup directory
+    :type backup_dir: str
+    :param databases: Comma delimited database names
+    :type database: str
+    :side effect: Calls subprocess.check_call
+    :raises subprocess.CalledProcessError: If the mysqldump fails
+    :returns: Path to the mysqldump file
+    :rtype: str
+    """
+    # In order to enable passwordless use of mysqldump
+    # write out my.cnf for user root
+    write_root_my_cnf()
+    # Enable use of my.cnf by setting HOME env variable
+    os.environ["HOME"] = "/root"
+    _user = "root"
+    _delimiter = ","
+    if not os.path.exists(backup_dir):
+        mkdir(
+            backup_dir, owner="mysql", group="mysql", perms=0o750)
+
+    bucmd = ["/usr/bin/mysqldump", "-u", _user,
+             "--column-statistics=0",
+             "--default-character-set=utf8",
+             "--triggers", "--routines", "--events",
+             "--ignore-table=mysql.event"]
+    if databases is not None:
+        _filename = os.path.join(
+            backup_dir,
+            "mysqldump-{}-{}".format(
+                "-".join(databases.split(_delimiter)),
+                datetime.datetime.now().strftime("%Y%m%d%H%M")))
+        bucmd.extend(["--result-file", _filename, "--databases"])
+        bucmd.extend(databases.split(_delimiter))
+    else:
+        _filename = os.path.join(
+            backup_dir,
+            "mysqldump-all-databases-{}".format(
+                datetime.datetime.now().strftime("%Y%m%d%H%M")))
+        bucmd.extend(["--result-file", _filename, "--all-databases"])
+    subprocess.check_call(bucmd)
+    gzcmd = ["gzip", _filename]
+    subprocess.check_call(gzcmd)
+    return "{}.gz".format(_filename)

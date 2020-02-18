@@ -6,6 +6,9 @@ import subprocess
 import traceback
 from time import gmtime, strftime
 
+import MySQLdb
+
+
 _path = os.path.dirname(os.path.realpath(__file__))
 _hooks = os.path.abspath(os.path.join(_path, '../hooks'))
 _root = os.path.abspath(os.path.join(_path, '..'))
@@ -167,12 +170,67 @@ def notify_bootstrapped(args):
     percona_utils.notify_bootstrapped()
 
 
+def set_pxc_strict_mode(args):
+    """Set PXC Strict Mode.
+    """
+    mode = action_get("mode")
+    try:
+        percona_utils.set_pxc_strict_mode(mode)
+        action_set({"outcome": "Success"})
+    except (MySQLdb.OperationalError, ValueError) as e:
+        action_set({
+            "output": ", ".join(e.args),
+            "traceback": traceback.format_exc()})
+        action_fail("Setting PXC strict mode {} failed"
+                    .format(mode))
+
+
+def mysqldump(args):
+    """Execute a mysqldump backup.
+
+    Execute mysqldump of the database(s).  The mysqldump action will take
+    in the databases action parameter. If the databases parameter is unset all
+    databases will be dumped, otherwise only the named databases will be
+    dumped. The action will use the basedir action parameter to dump the
+    database into the base directory.
+
+    A successful mysqldump backup will set the action results key,
+    mysqldump-file, with the full path to the dump file.
+
+    :param args: sys.argv
+    :type args: sys.argv
+    :side effect: Calls instance.mysqldump
+    :returns: This function is called for its side effect
+    :rtype: None
+    :action param basedir: Base directory to dump the db(s)
+    :action param databases: Comma separated string of databases
+    :action return:
+    """
+    basedir = action_get("basedir")
+    databases = action_get("databases")
+
+    try:
+        filename = percona_utils.mysqldump(basedir, databases=databases)
+        action_set({
+            "mysqldump-file": filename,
+            "outcome": "Success"}
+        )
+    except subprocess.CalledProcessError as e:
+        action_set({
+            "output": e.output,
+            "return-code": e.returncode,
+            "traceback": traceback.format_exc()})
+        action_fail("mysqldump failed")
+
+
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
 ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
            "complete-cluster-series-upgrade": complete_cluster_series_upgrade,
            "bootstrap-pxc": bootstrap_pxc,
-           "notify-bootstrapped": notify_bootstrapped}
+           "notify-bootstrapped": notify_bootstrapped,
+           "set-pxc-strict-mode": set_pxc_strict_mode,
+           "mysqldump": mysqldump}
 
 
 def main(args):
