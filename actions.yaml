@@ -34,3 +34,33 @@ bootstrap-pxc:
     https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/
 notify-bootstrapped:
    descripttion: Notify the cluster of the new bootstrap uuid.
+set-pxc-strict-mode:
+  description: |
+    Set PXC strict mode.
+  params:
+    mode:
+      type: string
+      default: "ENFORCING"
+      description: |
+        PXC strict mode. Valid options are DISALBED, PERMISSIVE, ENFORCING or MASTER
+        See https://www.percona.com/doc/percona-xtradb-cluster/LATEST/features/pxc-strict-mode.html
+        for more detail.
+mysqldump:
+  description: |
+    MySQL dump of databases. Action will return mysqldump-file location of the
+    requested backup in the results. If the databases parameter is unset all
+    databases will be dumped. If the databases parameter is set only the
+    databases specified will be dumped. Note it may be necessary to use the
+    set-pxc-strict-mode action first to set either PERMISSIVE or MASTER to
+    allow locking of tables for mysqldump to complete successfully.
+    See https://www.percona.com/doc/percona-xtradb-cluster/LATEST/features/pxc-strict-mode.html
+    for more detail.
+  params:
+    basedir:
+      type: string
+      default: "/var/backups/mysql"
+      description: The base directory for backups
+    databases:
+      description: |
+        Comma delimited database names to dump. If left unset, all databases
+        will be dumped.
