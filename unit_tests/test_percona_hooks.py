@@ -9,6 +9,7 @@ import yaml
 
 import charmhelpers.contrib.openstack.ha.utils as ch_ha_utils
 from charmhelpers.contrib.database.mysql import PerconaClusterHelper
+from charmhelpers.core.unitdata import kv
 
 from test_utils import CharmTestCase
 
@@ -981,3 +982,59 @@ class TestConfigs(CharmTestCase):
             '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
             context,
             perms=0o444)
+
+
+class TestClusterRelation(CharmTestCase):
+
+    TO_PATCH = [
+        'config',
+        'is_leader',
+    ]
+
+    def setUp(self):
+        CharmTestCase.setUp(self, hooks, TO_PATCH)
+        self.config.side_effect = self.test_config.get
+        self.is_leader.return_value = False
+        kvstore = kv()
+        kvstore.set('initial_client_update_done', True)
+
+    @mock.patch.object(hooks, 'config_changed')
+    @mock.patch.object(hooks, 'get_cluster_host_ip')
+    @mock.patch('percona_utils.notify_bootstrapped')
+    @mock.patch('percona_utils.get_wsrep_value')
+    @mock.patch('percona_utils.leader_get')
+    @mock.patch('percona_utils.check_mysql_connection')
+    @mock.patch.object(hooks, 'peer_echo')
+    @mock.patch.object(hooks, 'mark_seeded')
+    @mock.patch.object(hooks, 'seeded')
+    @mock.patch.object(hooks, 'is_bootstrapped')
+    def test_needs_to_be_mark_as_seeded(self, mock_is_bootstrapped,
+                                        mock_seeded, mock_mark_seeded,
+                                        mock_peer_echo, mock_check_connection,
+                                        mock_leader_get, mock_get_wsrep_value,
+                                        mock_notify_bootstrapped,
+                                        mock_cluster_host_ip,
+                                        mock_config_changed):
+        def fake_leader_get(k):
+            return {
+                'bootstrap-uuid': '1-2-3-4',
+                'wsrep_cluster_state_uuid': '1-2-3-4',
+            }[k]
+
+        mock_leader_get.side_effect = fake_leader_get
+        mock_get_wsrep_value.side_effect = fake_leader_get
+        mock_is_bootstrapped.return_value = True
+        mock_seeded.return_value = False
+        mock_check_connection.return_value = True
+        mock_cluster_host_ip.return_value = '127.0.1.1'
+        hooks.cluster_changed()
+        mock_mark_seeded.assert_called()
+        mock_config_changed.assert_called()
+        mock_get_wsrep_value.assert_called_with('wsrep_cluster_state_uuid')
+        mock_notify_bootstrapped.assert_called_with(cluster_uuid='1-2-3-4')
+
+        mock_mark_seeded.reset_mock()
+        mock_seeded.return_value = True
+        hooks.cluster_changed()
+        mock_mark_seeded.assert_not_called()
+        mock_seeded.assert_called()

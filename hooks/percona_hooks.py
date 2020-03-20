@@ -657,6 +657,9 @@ def cluster_changed():
     cluster_joined()
     config_changed()
 
+    if is_bootstrapped() and not seeded():
+        mark_seeded()
+
 
 def clear_and_populate_client_db_relations(relation_id, relation_name):
     # NOTE(jamespage): relation level data candidate
