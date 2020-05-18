@@ -1,5 +1,5 @@
 #!/usr/bin/make
-PYTHON := /usr/bin/env python
+PYTHON := /usr/bin/env python3
 export PYTHONPATH := hooks
 
 lint:
