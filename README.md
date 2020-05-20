@@ -11,6 +11,13 @@ list of such charms can be obtained from the [Charm
 Store][charms-requires-mysql-shared] (the charms officially supported by the
 OpenStack Charms project are published by 'openstack-charmers').
 
+> **Important**: The eoan series is the last series supported by the
+  percona-cluster charm. It is replaced by the
+  [mysql-innodb-cluster][mysql-innodb-cluster-charm] and
+  [mysql-router][mysql-router-charm] charms in the focal series. See
+  [percona-cluster charm: series upgrade to
+  Focal][cdg-percona-migration-to-mysql8] for migration steps.
+
 # Usage
 
 ## Configuration
@@ -361,3 +368,6 @@ For general charm questions refer to the [OpenStack Charm Guide][cg].
 [upstream-upgrading-55-to-56]: https://www.percona.com/doc/percona-xtradb-cluster/5.6/upgrading_guide_55_56.html
 [upstream-recovering]: https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/
 [juju-docs-actions]: https://jaas.ai/docs/actions
+[cdg-percona-migration-to-mysql8]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-series-upgrade-specific-procedures.html#percona-cluster-charm-series-upgrade-to-focal
+[mysql-router-charm]: https://jaas.ai/mysql-router
+[mysql-innodb-cluster-charm]: https://jaas.ai/mysql-innodb-cluster
