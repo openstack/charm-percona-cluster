@@ -1612,9 +1612,9 @@ def maybe_notify_bootstrapped():
 def set_pxc_strict_mode(mode):
     """Set PXC Strict Mode.
 
-    :param mode: Strict mode: DISALBED, PERMISSIVE, ENFORCING or MASTER
+    :param mode: Strict mode: DISABLED, PERMISSIVE, ENFORCING or MASTER
     :type backup_dir: str
-    :raises: Raises ValueError if mode is not a valide parameter
+    :raises: Raises ValueError if mode is not a valid parameter
     :raises: Raises MySQLdb.OperationalError if SQL is not successful
     :returns: None
     :rtype: None
@@ -1667,10 +1667,14 @@ def mysqldump(backup_dir, databases=None):
             backup_dir, owner="mysql", group="mysql", perms=0o750)
 
     bucmd = ["/usr/bin/mysqldump", "-u", _user,
-             "--column-statistics=0",
              "--default-character-set=utf8",
              "--triggers", "--routines", "--events",
              "--ignore-table=mysql.event"]
+
+    # Bionic and Xenial don't support this parameter
+    if CompareHostReleases(lsb_release()['DISTRIB_CODENAME']) >= "eoan":
+        bucmd.append("--column-statistics=0")
+
     if databases is not None:
         _filename = os.path.join(
             backup_dir,
@@ -1685,6 +1689,7 @@ def mysqldump(backup_dir, databases=None):
             "mysqldump-all-databases-{}".format(
                 datetime.datetime.now().strftime("%Y%m%d%H%M")))
         bucmd.extend(["--result-file", _filename, "--all-databases"])
+
     subprocess.check_call(bucmd)
     gzcmd = ["gzip", _filename]
     subprocess.check_call(gzcmd)
