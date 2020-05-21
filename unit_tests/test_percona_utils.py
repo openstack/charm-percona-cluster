@@ -535,6 +535,7 @@ class UtilsTestsStatus(CharmTestCase):
         'is_clustered',
         'distributed_wait',
         'cluster_ready',
+        'seeded',
     ]
 
     def setUp(self):
@@ -566,6 +567,7 @@ class UtilsTestsStatus(CharmTestCase):
         self.is_sufficient_peers.return_value = True
         self.is_bootstrapped.return_value = True
         self.cluster_in_sync.return_value = True
+        self.seeded.return_value = True
         stat, _ = percona_utils.charm_check_func()
         assert stat == 'active'
 
@@ -575,6 +577,7 @@ class UtilsTestsStatus(CharmTestCase):
         self.is_sufficient_peers.return_value = True
         self.is_bootstrapped.return_value = True
         self.cluster_in_sync.return_value = False
+        self.seeded.return_value = True
         stat, _ = percona_utils.charm_check_func()
         assert stat == 'blocked'
 
@@ -584,6 +587,7 @@ class UtilsTestsStatus(CharmTestCase):
         self.is_sufficient_peers.return_value = True
         self.is_bootstrapped.return_value = True
         self.cluster_in_sync.side_effect = [False, False, True]
+        self.seeded.return_value = True
         stat, _ = percona_utils.charm_check_func()
         assert stat == 'active'
 

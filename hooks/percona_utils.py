@@ -721,6 +721,9 @@ def charm_check_func():
         # and has the required peers
         if not is_bootstrapped():
             return ('waiting', 'Unit waiting for cluster bootstrap')
+        elif not seeded():
+            return ('waiting',
+                    "Unit waiting to bootstrap ('seeded' file missing)")
         elif cluster_ready():
             try:
                 _cluster_in_sync()
