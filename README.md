@@ -58,6 +58,13 @@ for mysql can be retrieved using the following command:
 Root user DB access is only usable from within one of the deployed units
 (access to root is restricted to localhost only).
 
+## Limitations
+
+Note that Percona XtraDB Cluster is not a 'scale-out' MySQL solution; reads
+and writes are channelled through a single service unit and synchronously
+replicated to other nodes in the cluster; reads/writes are as slow as the
+slowest node you have in your deployment.
+
 ## High availability
 
 When more than one unit is deployed with the hacluster application the charm
@@ -184,77 +191,18 @@ space should be used for access to MySQL databases services from other charms.
   will continue to function; this option is preferred over any network space
   binding provided for the 'shared-db' relation if set.
 
-# Limitations
+## Series upgrade
 
-Note that Percona XtraDB Cluster is not a 'scale-out' MySQL solution; reads
-and writes are channelled through a single service unit and synchronously
-replicated to other nodes in the cluster; reads/writes are as slow as the
-slowest node you have in your deployment.
+The procedure to upgrade the series of the machines hosting percona-cluster is
+documented in the [OpenStack Charms Deployment Guide][cdg-procedures].
 
-# Series Upgrade
-
-## Procedure
-
-1. Take a backup of all the databases
-
-    juju run-action mysql/N backup
-
- * Get that backup off the mysql/N unit and somewhere safe.
-
-    juju scp -- -r mysql/N:/opt/backups/mysql /path/to/local/backup/dir
-
-2. Pause all non-leader units and corresponding hacluster units.
-The leader node will remain up for the time being. This is to ensure the leader
-has the latest sequence number and will be considered the most up to date by
-the cluster.
-
-    juju run-action hacluster/N pause
-    juju run-action percona-cluster/N pause
-
-3. Prepare the leader node
-
-    juju upgrade-series $MACHINE_NUMBER prepare $SERIES
-
-4. Administratively perform the upgrade.
-* do-release-upgrade plus any further steps administratively required steps for an upgrade.
-
-5. Reboot
-
-6. Complete the series upgrade on the leader:
-
-    juju upgrade-series $MACHINE_NUMBER complete
-
-7. Administratively validate the leader node database is up and running
-* Connect to the database and check for expected data
-* Review "SHOW GLOBAL STATUS;"
-
-8. Upgrade the non-leader nodes one at a time following the same pattern summarized bellow:
-
-* juju upgrade-series $MACHINE_NUMBER prepare $SERIES
-* Administratively Upgrade
-* Reboot
-* juju upgrade-series $MACHINE_NUMBER complete
-* Validate
-
-9. Finalize the upgrade
-Run action on leader node.
-This action informs each node of the cluster the upgrade process is complete cluster wide.
-This also updates mysql configuration with all peers in the cluster.
-
-    juju run-action mysql/N complete-cluster-series-upgrade
-
-10. Set future instance to the new series and set the source origin
-
-    juju set-series percona-cluster xenial
-    juju config mysql source=distro
-
-## Upstream documentation
+Upstream documentation is also available:
 
 * [Upgrading Percona XtraDB Cluster][upstream-upgrading-percona]
 * [Percona XtraDB Cluster In-Place Upgrading Guide: From 5.5 to 5.6][upstream-upgrading-55-to-56]
 * [Galera replication - how to recover a PXC cluster][upstream-recovering]
 
-# Cold Boot
+## Cold Boot
 
 In the event of an unexpected power outage and cold boot, the cluster will be
 unable to reestablish itself without manual intervention.
@@ -265,7 +213,7 @@ Please read the upstream documentation as it provides context to the steps
 outlined here. In either scenario, it is necessary to choose a unit to become
 the bootstrap node.
 
-## Determine the node with the highest sequence number
+### Determine the node with the highest sequence number
 
 This information can be found in the
 `/var/lib/percona-xtradb-cluster/grastate.dat` file. The charm will also display
@@ -299,14 +247,14 @@ so we must choose that node to avoid data loss.
     percona-cluster/2   blocked   idle   3        10.5.0.27       3306/tcp  MySQL is down. Sequence Number: 1325. Safe To Bootstrap: 0
       hacluster/2       active    idle            10.5.0.27                 Unit is ready and clustered
 
-## Bootstrap the node with the highest sequence number
+### Bootstrap the node with the highest sequence number
 
 Run the `bootstrap-pxc` action on the node with the highest sequence number. In
 this example, it is unit percona-cluster/2, which happens to be a non-leader.
 
     juju run-action --wait percona-cluster/2 bootstrap-pxc
 
-## Notify the cluster of the new bootstrap UUID
+### Notify the cluster of the new bootstrap UUID
 
 In the vast majority of cases, once the `bootstrap-pxc` action has been run and
 the model has settled the output to the `juju status` command will now look
@@ -371,3 +319,4 @@ For general charm questions refer to the [OpenStack Charm Guide][cg].
 [cdg-percona-migration-to-mysql8]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-series-upgrade-specific-procedures.html#percona-cluster-charm-series-upgrade-to-focal
 [mysql-router-charm]: https://jaas.ai/mysql-router
 [mysql-innodb-cluster-charm]: https://jaas.ai/mysql-innodb-cluster
+[cdg-procedures]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-series-upgrade-openstack.html#procedures
