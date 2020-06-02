@@ -248,7 +248,7 @@ def peer_store_and_set(relation_id=None, peer_relation_name='cluster',
     @param relation_id: the id of the relation to store the data on. Defaults
                         to the current relation.
     @param peer_store_fatal: Set to True, the function will raise an exception
-                             should the peer sotrage not be avialable."""
+                             should the peer storage not be available."""
 
     relation_settings = relation_settings if relation_settings else {}
     relation_set(relation_id=relation_id,

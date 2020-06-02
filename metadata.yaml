@@ -6,11 +6,12 @@ description: |
   compatible alternative implemented using the Galera
   synchronous replication extensions.
 tags:
-  - databases
+- databases
 series:
-  - xenial
-  - bionic
-  - eoan
+- xenial
+- bionic
+- eoan
+- groovy
 extra-bindings:
   access:
 provides:
