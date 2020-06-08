@@ -2,7 +2,7 @@ import collections
 import os
 import tempfile
 
-import mock
+from unittest import mock
 
 from charmhelpers.fetch import SourceConfigError
 
