@@ -11,7 +11,6 @@ series:
 - xenial
 - bionic
 - eoan
-- groovy
 extra-bindings:
   access:
 provides:
