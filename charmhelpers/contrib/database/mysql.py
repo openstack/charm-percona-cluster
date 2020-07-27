@@ -422,7 +422,8 @@ class MySQLHelper(object):
         This is typically used to provide shared-db relations with a list of
         which units have been granted access to the given database.
         """
-        self.connect(password=self.get_mysql_root_password())
+        if not self.connection:
+            self.connect(password=self.get_mysql_root_password())
         allowed_units = set()
         for unit in related_units(relation_id):
             settings = relation_get(rid=relation_id, unit=unit)
@@ -459,7 +460,8 @@ class MySQLHelper(object):
 
     def configure_db(self, hostname, database, username, admin=False):
         """Configure access to database for username from hostname."""
-        self.connect(password=self.get_mysql_root_password())
+        if not self.connection:
+            self.connect(password=self.get_mysql_root_password())
         if not self.database_exists(database):
             self.create_database(database)
 
