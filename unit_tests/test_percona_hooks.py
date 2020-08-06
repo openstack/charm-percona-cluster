@@ -51,7 +51,8 @@ TO_PATCH = ['log', 'config',
             'peer_retrieve_by_prefix',
             'client_node_is_ready',
             'relation_set',
-            'relation_get']
+            'relation_get',
+            'install_mysql_ocf']
 
 
 class TestSharedDBRelation(CharmTestCase):

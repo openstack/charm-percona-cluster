@@ -205,6 +205,7 @@ def install():
     apt_update(fatal=True)
 
     install_percona_xtradb_cluster()
+    install_mysql_ocf()
 
 
 def render_config(hosts=None):
@@ -935,6 +936,7 @@ def shared_db_changed(relation_id=None, unit=None):
 
 @hooks.hook('ha-relation-joined')
 def ha_relation_joined(relation_id=None):
+    install_mysql_ocf()
     sstpsswd = sst_password()
     _relation_data = {
         'resources': {
@@ -969,6 +971,7 @@ def ha_relation_joined(relation_id=None):
 
 @hooks.hook('ha-relation-changed')
 def ha_relation_changed():
+    install_mysql_ocf()
     update_client_db_relations()
 
 

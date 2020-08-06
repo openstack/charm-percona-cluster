@@ -442,6 +442,8 @@ def install_mysql_ocf():
         else:
             log("'{}' already exists, skipping"
                 .format(dest_file), level='INFO')
+        # Always set to executable
+        os.chmod(dest_file, 0o755)
 
 
 def get_wsrep_value(key):
