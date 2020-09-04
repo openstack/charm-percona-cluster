@@ -682,11 +682,23 @@ def cluster_in_sync():
     return False
 
 
-def charm_check_func():
+def charm_check_func(ensure_seeded=False):
     """Custom function to assess the status of the current unit
 
-    @returns (status, message) - tuple of strings if an issue
+    :param ensure_seeded: if set, then ensure that the seeded file exists.
+        This is to work around bug: #1868326   where the resume action to
+        manage_payload_services causes the seeded file to be removed under
+        certain circumstances.  This is one of the only places where we can
+        actually re-assert it prior to the resume failing, as this function
+        gets a chance to run after management_payload_services() but prior to
+        the actual
+    :type ensure_seeded: bool
+    :returns: (status, message)
+    :rtype: Tuple[str, str]
     """
+    if ensure_seeded and not seeded():
+        log("'seeded' file is missing but should exists; putting it back.")
+        mark_seeded()
     if is_unit_upgrading_set():
         # Avoid looping through attempting to determine cluster_in_sync
         return ("blocked", "Unit upgrading.")
@@ -830,9 +842,14 @@ def assess_status_func(configs):
     @param configs: a templating.OSConfigRenderer() object
     @return f() -> None : a function that assesses the unit's workload status
     """
+    # BUG: 1868326 - the resume action on the mysql service can wipe out the
+    # seeded file; if it is seeded, then we put it back. This function is
+    # called as part of the resume_unit() call and is one of the only places to
+    # actually do and fix this check.
+    is_seeded = seeded()
     return make_assess_status_func(
         configs, REQUIRED_INTERFACES,
-        charm_func=lambda _: charm_check_func(),
+        charm_func=lambda _: charm_check_func(ensure_seeded=is_seeded),
         services=services(), ports=None)
 
 

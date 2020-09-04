@@ -7,6 +7,8 @@ tests:
  - xenial_model:
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterCharmTests
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterScaleTests
+ - xenial_series_upgrade_model:
+   - zaza.openstack.charm_tests.series_upgrade.tests.XenialBionicSeriesUpgrade
 configure:
   - zaza.model.block_until_all_units_idle
 target_deploy_status:
@@ -16,3 +18,4 @@ gate_bundles:
 smoke_bundles:
   - bionic_model: bionic-ha
 dev_bundles:
+  - xenial_series_upgrade_model: xenial-queens-ha-series-upgrade
