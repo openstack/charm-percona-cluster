@@ -227,7 +227,8 @@ def is_sufficient_peers():
             return False
         else:
             log("Sufficient number of peer units to form cluster {}"
-                "".format(min_size, level=DEBUG))
+                .format(min_size),
+                level=DEBUG)
             return True
     else:
         log("min-cluster-size is not defined, race conditions may occur if "
@@ -275,7 +276,7 @@ def get_cluster_hosts():
                         (unit, hostname, cluster_address), level=DEBUG)
                     continue
                 else:
-                    log("(unit=%s) hostname '{}' provided by cluster relation "
+                    log("(unit={}) hostname '{}' provided by cluster relation "
                         "for addr {}".format(unit, hostname, cluster_address),
                         level=DEBUG)
 
@@ -459,7 +460,7 @@ def get_wsrep_value(key):
     try:
         cursor.execute("show status like '{}'".format(key))
         ret = cursor.fetchall()
-    except:
+    except Exception:
         log("Failed to get '%s'", ERROR)
         return None
     finally:
@@ -1129,8 +1130,8 @@ def get_wsrep_provider_options():
             'gcs.fc_limit={}'.format(config('gcs-fc-limit')))
 
     peer_timeout = config('peer-timeout')
-    if peer_timeout and(not peer_timeout.startswith('PT') or
-                        not peer_timeout.endswith('S')):
+    if peer_timeout and (not peer_timeout.startswith('PT') or
+                         not peer_timeout.endswith('S')):
         raise ValueError("Invalid gcast.peer_timeout value: {}"
                          .format(peer_timeout))
     elif peer_timeout:
@@ -1275,7 +1276,7 @@ def get_databases_to_replicate():
     return databases_to_replicate
 
 
-def check_invalid_chars(data, bad_chars_re="[\^\\/?%*:|\"'<>., ]"):
+def check_invalid_chars(data, bad_chars_re=r"[\^\\/?%*:|\"'<>., ]"):
     """ Check for invalid characters
 
     Run a pattern check on the data and raise an InvalidCharacters exception

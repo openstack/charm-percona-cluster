@@ -744,7 +744,7 @@ class TestUpgradeCharm(CharmTestCase):
         CharmTestCase.tearDown(self)
         try:
             shutil.rmtree(self.tmpdir)
-        except:
+        except Exception:
             pass
 
     def test_upgrade_charm_leader(self):
