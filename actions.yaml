@@ -64,3 +64,8 @@ mysqldump:
       description: |
         Comma delimited database names to dump. If left unset, all databases
         will be dumped.
+generate-nagios-password:
+  description: |
+    Re-generate the password for the nagios user. This action can only be run on the leader unit,
+    which sets a new password and then the `leader-settings-changed` hook will be activate.
+

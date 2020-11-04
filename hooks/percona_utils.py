@@ -97,6 +97,7 @@ ADD_APT_REPOSITORY_FAILED = "add-apt-repository-failed"
 # maintenance mode, but is currently not populated as the
 # charm_check_function() checks whether the unit is working properly.
 REQUIRED_INTERFACES = {}
+MYSQL_NAGIOS_CREDENTIAL_FILE = "/etc/nagios/mysql-check.cnf"
 
 
 class LeaderNoBootstrapUUIDError(Exception):
@@ -1053,6 +1054,8 @@ root_password = partial(_get_password, 'root-password')
 
 sst_password = partial(_get_password, 'sst-password')
 
+nagios_password = partial(_get_password, 'nagios-password')
+
 
 def pxc_installed():
     '''Determine whether percona-xtradb-cluster is installed
@@ -1744,3 +1747,94 @@ def update_source(source, key=None):
     else:
         apt_update()  # run without retries
         log("apt update after adding a new package source")
+
+
+def get_nrpe_threads_connected_thresholds():
+    """This function get and verifies threshold values.
+
+    The function confirms these conditions:
+    Thresholds for `nrpe-threads-connected` should be separable by `,` and
+    represented by an integer, where the warning threshold should be
+    in the range [0, 100) and the critical threshold in the range (0, 100).
+    At the same time, the warning threshold should be lower than
+    the critical one.
+
+    :returns: warning threshold, critical threshold
+    :rtype: Tuple[int, int]
+    :raises: ValueError
+    """
+    values = config("nrpe-threads-connected").split(",")
+
+    if len(values) != 2:
+        raise ValueError("the wrong number of values was set for "
+                         "the nrpe-threads-connected")
+
+    try:
+        warning_threshold, critical_threshold = int(values[0]), int(values[1])
+    except ValueError as error:
+        raise error
+
+    if not (0 <= warning_threshold < 100 and 0 < critical_threshold <= 100):
+        raise ValueError("the warning threshold must be in the range [0,100) "
+                         "and the critical threshold must be in the range "
+                         "(0,100]")
+
+    if warning_threshold >= critical_threshold:
+        raise ValueError("the warning threshold must be less than critical")
+
+    return warning_threshold, critical_threshold
+
+
+def write_nagios_my_cnf():
+    """Create a MySQL configuration file with nagios user credentials."""
+    context = {
+        "mysql_user": "nagios", "mysql_passwd": nagios_password(),
+    }
+    render("nagios-my.cnf", MYSQL_NAGIOS_CREDENTIAL_FILE, context,
+           owner="nagios", group="nagios", perms=0o640)
+
+
+def create_nagios_user():
+    """Create MySQL user for nagios to check the status of MySQL.
+
+    This user does not have any permissions set, does not have access
+    to any database and can only connect from localhost.
+
+    :raises: OperationalError
+    """
+    m_helper = get_db_helper()
+    try:
+        m_helper.connect(password=m_helper.get_mysql_root_password())
+    except OperationalError:
+        log("Could not connect to db", level=ERROR)
+        raise
+    # NOTE (rgildein): This user has access to the SHOW GLOBAL STATUS
+    # statement, which does not require any privilege, only the ability to
+    # connect to the server.
+    nagios_exists = False
+    try:
+        # NOTE (rgildein): This method of creation nagios user should be
+        # replaced by the `MySQLHelper.create_user` method after
+        # bug #1905586 has been fixed and merged.
+        nagios_exists = m_helper.select(
+            "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'nagios')"
+        )
+        m_helper.execute("CREATE USER 'nagios'@'localhost';")
+    except OperationalError as error:
+        if not nagios_exists:
+            log("Creating user nagios failed due: {}".format(error),
+                level="ERROR")
+            raise error
+        else:
+            log("User 'nagios'@'localhost' already exists.", level="WARNING")
+    # NOTE (rgildein): Update the user's password if it has changed.
+    m_helper.execute("ALTER USER 'nagios'@'localhost' IDENTIFIED BY "
+                     "'{passwd}';".format(passwd=nagios_password()))
+
+
+def set_nagios_user():
+    """Create MySQL user and configuration file with user credentials."""
+    if is_leader():
+        create_nagios_user()
+
+    write_nagios_my_cnf()

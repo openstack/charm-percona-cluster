@@ -358,3 +358,10 @@ options:
       control message will be sent.  The fc_limit defaults to 16 transactions.
       This effectively means that this is as far as a given node can be behind
       committing transactions from the cluster.
+  nrpe-threads-connected:
+    type: string
+    default: '80,90'
+    description: |
+      This configuration option represents the warning and critical percentages
+      that are used to check the number of threads connected to MySQL.
+      The value should be written as a string containing two numbers separated by commas.

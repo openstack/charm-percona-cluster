@@ -38,6 +38,14 @@ to form its cluster. It is best practice to use this option as doing so ensures
 that the charm will wait until the cluster is up before accepting relations
 from other client applications.
 
+#### `nrpe-threads-connected`
+
+The `nrpe-threads-connected` option sets Warning and Critical thresholds (in percent)
+for NRPE check to monitor the number of threads connecting to the MySQL.
+If the `nrpe-external-master` relationship is set, a nagios user who does
+not have permission and can only connect from localhost is created before
+the check is created.
+
 ## Deployment
 
 To deploy a single percona-cluster unit:

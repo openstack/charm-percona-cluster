@@ -34,6 +34,7 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    ERROR,
     is_leader,
     network_get_primary_address,
     leader_get,
@@ -57,6 +58,7 @@ from charmhelpers.fetch import (
     apt_install,
     add_source,
     SourceConfigError,
+    filter_installed_packages,
 )
 from charmhelpers.contrib.peerstorage import (
     peer_echo,
@@ -151,6 +153,9 @@ from percona_utils import (
     delete_replication_user,
     list_replication_users,
     check_mysql_connection,
+    set_nagios_user,
+    get_nrpe_threads_connected_thresholds,
+    MYSQL_NAGIOS_CREDENTIAL_FILE,
     update_source,
     ADD_APT_REPOSITORY_FAILED,
 )
@@ -1035,15 +1040,39 @@ def leader_elected():
             'nrpe-external-master-relation-changed')
 def update_nrpe_config():
     # python-dbus is used by check_upstart_job
-    apt_install('python-dbus')
+    # nagios-plugins-contrib add pmp-check-mysql-status check
+    packages = filter_installed_packages(["python-dbus",
+                                          "nagios-plugins-contrib"])
+    apt_install(packages)
+
     hostname = nrpe.get_nagios_hostname()
     current_unit = nrpe.get_nagios_unit_name()
     nrpe_setup = nrpe.NRPE(hostname=hostname)
     nrpe.add_init_service_checks(nrpe_setup, ['mysql'], current_unit)
     nrpe_setup.add_check(
         shortname='mysql_proc',
-        description='Check MySQL process {%s}' % current_unit,
+        description='Check MySQL process {}'.format(current_unit),
         check_cmd='check_procs -c 1:1 -C mysqld'
+    )
+    try:
+        warning_threads, critical_threads = \
+            get_nrpe_threads_connected_thresholds()
+    except ValueError as error:
+        log("failed to get thresholds from nrpe-threads-connected due: "
+            "{}".format(error), level=ERROR)
+        log("the default thresholds are used")
+        warning_threads, critical_threads = 80, 90
+
+    set_nagios_user()
+    nrpe_setup.add_check(
+        shortname='mysql_threads',
+        description='Check MySQL connected threads',
+        check_cmd='pmp-check-mysql-status --defaults-file {credential_file} '
+                  '-x Threads_connected -o / -y max_connections -T pct '
+                  '-w {warning} -c {critical}'.format(
+                      credential_file=MYSQL_NAGIOS_CREDENTIAL_FILE,
+                      warning=warning_threads,
+                      critical=critical_threads)
     )
     nrpe_setup.write()
 

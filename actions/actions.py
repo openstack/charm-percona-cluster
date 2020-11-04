@@ -36,6 +36,7 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     CompareHostReleases,
     lsb_release,
+    pwgen,
 )
 
 from charmhelpers.contrib.openstack.utils import (
@@ -223,6 +224,16 @@ def mysqldump(args):
         action_fail("mysqldump failed")
 
 
+def generate_nagios_password(args):
+    """Regenerate nagios password."""
+    if is_leader():
+        leader_set({"nagios-password": pwgen()})
+        percona_utils.set_nagios_user()
+        action_set({"output": "New password for nagios created successfully."})
+    else:
+        action_fail("This action should only take place on the leader unit.")
+
+
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
 ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
@@ -230,7 +241,8 @@ ACTIONS = {"pause": pause, "resume": resume, "backup": backup,
            "bootstrap-pxc": bootstrap_pxc,
            "notify-bootstrapped": notify_bootstrapped,
            "set-pxc-strict-mode": set_pxc_strict_mode,
-           "mysqldump": mysqldump}
+           "mysqldump": mysqldump,
+           "generate-nagios-password": generate_nagios_password}
 
 
 def main(args):

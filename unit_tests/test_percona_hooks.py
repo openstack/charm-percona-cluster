@@ -266,15 +266,45 @@ class TestNRPERelation(CharmTestCase):
     def setUp(self):
         patch_targets_nrpe = TO_PATCH[:]
         patch_targets_nrpe.remove("update_nrpe_config")
-        patch_targets_nrpe.append("nrpe")
-        patch_targets_nrpe.append("apt_install")
+        patch_targets_nrpe.extend(["nrpe",
+                                   "apt_install",
+                                   "config",
+                                   "set_nagios_user"])
         CharmTestCase.setUp(self, hooks, patch_targets_nrpe)
 
-    def test_mysql_monitored(self):
+    @mock.patch("percona_utils.config")
+    @mock.patch("percona_utils.is_leader")
+    @mock.patch("percona_utils.leader_get")
+    def test_mysql_monitored(self,
+                             mock_leader_get,
+                             mock_is_leader,
+                             mock_config):
         """The mysql service is monitored by Nagios."""
+        self.nrpe.get_nagios_unit_name.return_value = "nagios-0"
+        self.test_config.set("nrpe-threads-connected", "80,90")
+        mock_config.side_effect = self.test_config.get
+        mock_is_leader.return_value = True
+        mock_leader_get.return_value = "1234"
+        nrpe_setup = mock.MagicMock()
+        nrpe_setup.add_check = mock.MagicMock()
+        self.nrpe.NRPE.return_value = nrpe_setup
+
         hooks.update_nrpe_config()
         self.nrpe.add_init_service_checks.assert_called_once_with(
             mock.ANY, ["mysql"], mock.ANY)
+        nrpe_setup.add_check.assert_has_calls([
+            mock.call(
+                shortname="mysql_proc",
+                description="Check MySQL process nagios-0",
+                check_cmd="check_procs -c 1:1 -C mysqld"),
+            mock.call(
+                shortname="mysql_threads",
+                description="Check MySQL connected threads",
+                check_cmd="pmp-check-mysql-status "
+                          "--defaults-file /etc/nagios/mysql-check.cnf "
+                          "-x Threads_connected -o / -y max_connections "
+                          "-T pct -w 80 -c 90")
+        ])
 
 
 class TestMasterRelation(CharmTestCase):

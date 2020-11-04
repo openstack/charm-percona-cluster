@@ -17,6 +17,7 @@ class UtilsTests(CharmTestCase):
     TO_PATCH = [
         'config',
         'kv',
+        'is_leader',
         'leader_get',
         'log',
         'relation_ids',
@@ -537,6 +538,74 @@ class UtilsTests(CharmTestCase):
             percona_utils.update_source("invalid-source", key=None)
 
         mock_apt_update.assert_not_called()
+
+    @mock.patch.object(percona_utils, "get_db_helper")
+    @mock.patch.object(percona_utils, "write_nagios_my_cnf")
+    def test_create_nagios_user(self,
+                                mock_create_nagios_mysql_credential,
+                                mock_get_db_helper):
+        my_mock = mock.Mock()
+        self.leader_get.return_value = "1234"
+        self.is_leader.return_value = True
+        mock_get_db_helper.return_value = my_mock
+
+        percona_utils.create_nagios_user()
+        my_mock.select.assert_called_once_with(
+            "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'nagios')"
+        )
+        my_mock.execute.assert_has_calls([
+            mock.call("CREATE USER 'nagios'@'localhost';"),
+            mock.call("ALTER USER 'nagios'@'localhost' IDENTIFIED BY '1234';"),
+        ])
+
+        class OperationalError(Exception):
+            pass
+
+        percona_utils.OperationalError = OperationalError
+
+        def mysql_create_user(*args, **kwargs):
+            raise OperationalError()
+
+        my_mock.select.return_value = True
+        my_mock.execute.side_effect = mysql_create_user
+        with self.assertRaises(OperationalError):
+            percona_utils.create_nagios_user()
+
+    def test_get_nrpe_threads_connected_thresholds(self):
+        """Test function for getting and verifying threshold values."""
+        self.config.return_value = "a,1,2"
+        with self.assertRaises(ValueError) as context:
+            percona_utils.get_nrpe_threads_connected_thresholds()
+            self.assertEqual(ValueError("the wrong number of values was set "
+                                        "for the nrpe-threads-connected"),
+                             context.exception)
+
+        self.config.return_value = "a,1"
+        with self.assertRaises(ValueError) as context:
+            percona_utils.get_nrpe_threads_connected_thresholds()
+            self.assertEqual(
+                ValueError("invalid literal for int() with base 10: 'a'"),
+                context.exception)
+
+        self.config.return_value = "50,200"
+        with self.assertRaises(ValueError) as context:
+            percona_utils.get_nrpe_threads_connected_thresholds()
+            self.assertEqual(ValueError("the warning threshold must be in the "
+                                        "range [0,100) and the critical "
+                                        "threshold must be in the range "
+                                        "(0,100]"),
+                             context.exception)
+
+        self.config.return_value = "90,60"
+        with self.assertRaises(ValueError) as context:
+            percona_utils.get_nrpe_threads_connected_thresholds()
+            self.assertEqual(ValueError("the warning threshold must be less "
+                                        "than critical"),
+                             context.exception)
+
+        self.config.return_value = "80,90"
+        thresholds = percona_utils.get_nrpe_threads_connected_thresholds()
+        self.assertEqual(thresholds, (80, 90))
 
 
 class UtilsTestsStatus(CharmTestCase):

@@ -105,3 +105,35 @@ class MainTestCase(CharmTestCase):
         with mock.patch.dict(actions.ACTIONS, {"foo": dummy_action}):
             actions.main(["foo"])
         self.assertEqual(dummy_calls, ["Action foo failed: uh oh"])
+
+
+class NagiosTestCase(CharmTestCase):
+
+    def setUp(self):
+        super(NagiosTestCase, self).setUp(actions,
+                                          ["action_set",
+                                           "action_fail",
+                                           "is_leader",
+                                           "leader_set",
+                                           "pwgen",
+                                           ])
+
+    @patch.object(actions.percona_utils, "set_nagios_user")
+    def test_generate_nagios_password(self, mock_set_nagios_user):
+        """Test regenerate new password for nagios user."""
+        self.is_leader.return_value = True
+        self.pwgen.return_value = "1234"
+        actions.generate_nagios_password([])
+        self.leader_set.assert_called_once_with({"nagios-password": "1234"})
+        mock_set_nagios_user.assert_called_once_with()
+        self.action_set.assert_called_once_with(
+            {"output": "New password for nagios created successfully."}
+        )
+
+    def test_generate_nagios_password_no_leader(self):
+        """Test regenerate new password for nagios user at no leader unit."""
+        self.is_leader.return_value = False
+        actions.generate_nagios_password([])
+        self.action_fail.assert_called_once_with(
+            "This action should only take place on the leader unit."
+        )
