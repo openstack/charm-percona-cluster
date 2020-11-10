@@ -4,6 +4,8 @@ import tempfile
 
 import mock
 
+from charmhelpers.fetch import SourceConfigError
+
 import percona_utils
 
 from test_utils import CharmTestCase, patch_open
@@ -518,6 +520,24 @@ class UtilsTests(CharmTestCase):
         percona_utils.maybe_notify_bootstrapped()
         _notify_bootstrapped.assert_called_once_with(cluster_uuid=_uuid)
 
+    @mock.patch("percona_utils.add_source")
+    @mock.patch("percona_utils.apt_update")
+    def test_update_source(self, mock_apt_update, mock_add_source):
+        """Ensure that add_source and apt_update has been called"""
+        percona_utils.update_source("test-source", key=None)
+
+        mock_add_source.assert_called_once_with(
+            source="test-source", key=None, fail_invalid=True)
+        mock_apt_update.assert_called_once_with()
+
+    @mock.patch("percona_utils.apt_update")
+    def test_update_invalid_source(self, mock_apt_update):
+        """Ensure raise error and set blocked status after invalid source"""
+        with self.assertRaises(SourceConfigError):
+            percona_utils.update_source("invalid-source", key=None)
+
+        mock_apt_update.assert_not_called()
+
 
 class UtilsTestsStatus(CharmTestCase):
 
@@ -606,11 +626,14 @@ class UtilsTestsCTC(CharmTestCase):
         'is_clustered',
         'distributed_wait',
         'clustered_once',
-        'kv'
+        'kv',
     ]
 
     def setUp(self):
         super(UtilsTestsCTC, self).setUp(percona_utils, self.TO_PATCH)
+        kvstore = mock.MagicMock()
+        kvstore.get.return_value = False
+        self.kv.return_value = kvstore
 
     @mock.patch.object(percona_utils, 'pxc_installed')
     @mock.patch.object(percona_utils, 'determine_packages')
