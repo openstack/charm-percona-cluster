@@ -402,10 +402,14 @@ class TestConfigChanged(CharmTestCase):
         'is_unit_paused_set',
         'is_unit_upgrading_set',
         'get_cluster_host_ip',
+        'status_set',
+        'kv',
     ]
 
     def setUp(self):
         CharmTestCase.setUp(self, hooks, self.TO_PATCH)
+        self.test_config.set_previous("source", self.test_config["source"])
+        self.test_config.set_previous("key", self.test_config["key"])
         self.config.side_effect = self.test_config.get
         self.is_unit_paused_set.return_value = False
         self.is_unit_upgrading_set.return_value = False
@@ -416,6 +420,9 @@ class TestConfigChanged(CharmTestCase):
         self.relation_ids.return_value = []
         self.is_relation_made.return_value = False
         self.get_cluster_hosts.return_value = []
+        self.kvstore = mock.MagicMock()
+        self.kvstore.get.return_value = False
+        self.kv.return_value = self.kvstore
 
         def _leader_get(key):
             settings = {'leader-ip': '10.10.10.10',
@@ -423,9 +430,36 @@ class TestConfigChanged(CharmTestCase):
             return settings.get(key)
         self.leader_get.side_effect = _leader_get
 
+    @mock.patch("percona_utils.add_source")
+    @mock.patch("percona_utils.apt_update")
+    def test_config_change_update_source(
+            self, mock_apt_update, mock_add_source):
+        """Ensure add_source and apt_update is called after changing source"""
+        self.test_config.set("source", "test-source")
+
+        hooks.config_changed()
+        self.status_set.assert_any_call(
+            "maintenance", "Upgrading Percona packages")
+        mock_add_source.assert_called_once_with(
+            source="test-source", key=None, fail_invalid=True)
+        mock_apt_update.assert_called_once_with()
+
+    def test_config_change_update_source_failed(self):
+        """Ensure failure after configuring an invalid source"""
+        self.test_config.set("source", "invalid-source")
+        self.kvstore.get.return_value = True
+
+        hooks.config_changed()
+        self.kvstore.set.assert_called_once_with(
+            hooks.ADD_APT_REPOSITORY_FAILED, True)
+        self.status_set.assert_has_calls([
+            mock.call("maintenance", "Upgrading Percona packages"),
+        ])
+
     def test_config_changed_open_port(self):
         '''Ensure open_port is called with MySQL default port'''
         self.is_leader_bootstrapped.return_value = True
+
         hooks.config_changed()
         self.open_port.assert_called_with(3306)
 
@@ -779,7 +813,7 @@ class TestConfigs(CharmTestCase):
     ]
 
     def setUp(self):
-        CharmTestCase.setUp(self, hooks, TO_PATCH)
+        CharmTestCase.setUp(self, hooks, self.TO_PATCH)
         self.config.side_effect = self.test_config.get
         self.default_config = self._get_default_config()
         for key, value in self.default_config.items():
@@ -986,11 +1020,6 @@ class TestConfigs(CharmTestCase):
 
 
 class TestClusterRelation(CharmTestCase):
-
-    TO_PATCH = [
-        'config',
-        'is_leader',
-    ]
 
     def setUp(self):
         CharmTestCase.setUp(self, hooks, TO_PATCH)

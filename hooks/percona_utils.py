@@ -49,9 +49,12 @@ from charmhelpers.core.hookenv import (
 )
 from charmhelpers.core.unitdata import kv
 from charmhelpers.fetch import (
+    add_source,
     apt_install,
+    apt_update,
     filter_installed_packages,
     get_upstream_version,
+    SourceConfigError,
 )
 from charmhelpers.contrib.network.ip import (
     get_address_in_network,
@@ -88,6 +91,7 @@ HOSTS_FILE = '/etc/hosts'
 DEFAULT_MYSQL_PORT = 3306
 INITIAL_CLUSTERED_KEY = 'initial-cluster-complete'
 INITIAL_CLIENT_UPDATE_KEY = 'initial_client_update_done'
+ADD_APT_REPOSITORY_FAILED = "add-apt-repository-failed"
 
 # NOTE(ajkavanagh) - this is 'required' for the pause/resume code for
 # maintenance mode, but is currently not populated as the
@@ -806,6 +810,16 @@ def assess_status(configs):
     @param configs: a templating.OSConfigRenderer() object
     @returns None - this function is executed for its side-effect
     """
+    kvstore = kv()
+    if kvstore.get(ADD_APT_REPOSITORY_FAILED, False):
+        # NOTE (rgildein): prevent unit status from changing from blocked
+        # to "Unit is ready", if adding a new source failed
+        log("skip assess_status, because adding new source failed", level=INFO)
+        status_set(
+            "blocked", "problem adding new source: {}".format(config("source"))
+        )
+        return
+
     assess_status_func(configs)()
     if pxc_installed():
         # NOTE(fnordahl) ensure we do not call application_version_set with
@@ -1717,3 +1731,16 @@ def mysqldump(backup_dir, databases=None):
     gzcmd = ["gzip", _filename]
     subprocess.check_call(gzcmd)
     return "{}.gz".format(_filename)
+
+
+def update_source(source, key=None):
+    """Add source and run apt update."""
+    try:
+        add_source(source=source, key=key, fail_invalid=True)
+        log("add new package source: {}".format(source))
+    except (subprocess.CalledProcessError, SourceConfigError) as error:
+        log(error, level=ERROR)
+        raise
+    else:
+        apt_update()  # run without retries
+        log("apt update after adding a new package source")

@@ -56,6 +56,7 @@ from charmhelpers.fetch import (
     apt_update,
     apt_install,
     add_source,
+    SourceConfigError,
 )
 from charmhelpers.contrib.peerstorage import (
     peer_echo,
@@ -94,6 +95,7 @@ from charmhelpers.contrib.openstack.ha.utils import (
     update_hacluster_vip,
     update_hacluster_dns_ha,
 )
+from charmhelpers.core.unitdata import kv
 
 from percona_utils import (
     determine_packages,
@@ -149,9 +151,9 @@ from percona_utils import (
     delete_replication_user,
     list_replication_users,
     check_mysql_connection,
+    update_source,
+    ADD_APT_REPOSITORY_FAILED,
 )
-
-from charmhelpers.core.unitdata import kv
 
 hooks = Hooks()
 
@@ -532,12 +534,29 @@ def config_changed():
     # leader or if the leader is bootstrapped and therefore ready for install.
     install_percona_xtradb_cluster()
 
+    # run a package update if the source or key has changed
+    cfg = config()
+    kvstore = kv()
+    if cfg.changed("source") or cfg.changed("key"):
+        status_set("maintenance", "Upgrading Percona packages")
+        try:
+            update_source(source=cfg["source"], key=cfg["key"])
+            kvstore.set(ADD_APT_REPOSITORY_FAILED, False)
+        except (subprocess.CalledProcessError, SourceConfigError):
+            # NOTE (rgildein): Need to store the local state to prevent
+            # `assess_status` from running, which changes the unit state
+            # to "Unit is ready"
+            kvstore.set(ADD_APT_REPOSITORY_FAILED, True)
+        kvstore.flush()
+
+    if kvstore.get(ADD_APT_REPOSITORY_FAILED, False):
+        return
+
     if config('prefer-ipv6'):
         assert_charm_supports_ipv6()
 
     hosts = get_cluster_hosts()
     leader_bootstrapped = is_leader_bootstrapped()
-    leader_ip = leader_get('leader-ip')
 
     # Cluster upgrade adds some complication
     cluster_series_upgrading = leader_get("cluster_series_upgrading")
