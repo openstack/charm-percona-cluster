@@ -9,9 +9,8 @@ import yaml
 
 import charmhelpers.contrib.openstack.ha.utils as ch_ha_utils
 from charmhelpers.contrib.database.mysql import PerconaClusterHelper
-from charmhelpers.core.unitdata import kv
 
-from test_utils import CharmTestCase
+from test_utils import CharmTestCase, FakeKvStore
 
 sys.modules['MySQLdb'] = mock.Mock()
 # python-apt is not installed as part of test-requirements but is imported by
@@ -24,7 +23,8 @@ with mock.patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec:
     import percona_hooks as hooks
 
 
-TO_PATCH = ['log', 'config',
+TO_PATCH = ['log',
+            'config',
             'get_db_helper',
             'relation_ids',
             'relation_set',
@@ -52,7 +52,8 @@ TO_PATCH = ['log', 'config',
             'client_node_is_ready',
             'relation_set',
             'relation_get',
-            'install_mysql_ocf']
+            'install_mysql_ocf',
+            'kv']
 
 
 class TestSharedDBRelation(CharmTestCase):
@@ -763,6 +764,8 @@ class TestUpgradeCharm(CharmTestCase):
         'leader_get',
         'notify_bootstrapped',
         'mark_seeded',
+        'kv',
+        'is_unit_upgrading_set',
     ]
 
     def print_log(self, msg, level=None):
@@ -773,6 +776,7 @@ class TestUpgradeCharm(CharmTestCase):
         self.config.side_effect = self.test_config.get
         self.log.side_effect = self.print_log
         self.tmpdir = tempfile.mkdtemp()
+        self.is_unit_upgrading_set.return_value = False
 
     def tearDown(self):
         CharmTestCase.tearDown(self)
@@ -853,6 +857,7 @@ class TestConfigs(CharmTestCase):
                 default_config[k] = None
         return default_config
 
+    @mock.patch.object(hooks, 'is_unit_upgrading_set')
     @mock.patch.object(os, 'makedirs')
     @mock.patch.object(hooks, 'get_cluster_host_ip')
     @mock.patch.object(hooks, 'get_wsrep_provider_options')
@@ -867,7 +872,9 @@ class TestConfigs(CharmTestCase):
                                            parse_config,
                                            get_wsrep_provider_options,
                                            get_cluster_host_ip,
-                                           makedirs):
+                                           makedirs,
+                                           mock_is_unit_upgrading_set):
+        mock_is_unit_upgrading_set.return_value = False
         parse_config.return_value = {'key_buffer': '32M'}
         get_cluster_host_ip.return_value = '10.1.1.1'
         get_wsrep_provider_options.return_value = None
@@ -905,6 +912,7 @@ class TestConfigs(CharmTestCase):
             context,
             perms=0o444)
 
+    @mock.patch.object(hooks, 'is_unit_upgrading_set')
     @mock.patch.object(os, 'makedirs')
     @mock.patch.object(hooks, 'get_cluster_host_ip')
     @mock.patch.object(hooks, 'get_wsrep_provider_options')
@@ -919,7 +927,9 @@ class TestConfigs(CharmTestCase):
                                     parse_config,
                                     get_wsrep_provider_options,
                                     get_cluster_host_ip,
-                                    makedirs):
+                                    makedirs,
+                                    mock_is_unit_upgrading_set):
+        mock_is_unit_upgrading_set.return_value = False
         parse_config.return_value = {'key_buffer': '32M'}
         get_cluster_host_ip.return_value = '10.1.1.1'
         get_wsrep_provider_options.return_value = None
@@ -960,6 +970,7 @@ class TestConfigs(CharmTestCase):
             context,
             perms=0o444)
 
+    @mock.patch.object(hooks, 'is_unit_upgrading_set')
     @mock.patch.object(os, 'makedirs')
     @mock.patch.object(hooks, 'get_cluster_host_ip')
     @mock.patch.object(hooks, 'get_wsrep_provider_options')
@@ -975,7 +986,9 @@ class TestConfigs(CharmTestCase):
             parse_config,
             get_wsrep_provider_options,
             get_cluster_host_ip,
-            makedirs):
+            makedirs,
+            mock_is_unit_upgrading_set):
+        mock_is_unit_upgrading_set.return_value = False
         parse_config.return_value = {'key_buffer': '32M'}
         get_cluster_host_ip.return_value = '10.1.1.1'
         get_wsrep_provider_options.return_value = None
@@ -1025,9 +1038,11 @@ class TestClusterRelation(CharmTestCase):
         CharmTestCase.setUp(self, hooks, TO_PATCH)
         self.config.side_effect = self.test_config.get
         self.is_leader.return_value = False
-        kvstore = kv()
-        kvstore.set('initial_client_update_done', True)
+        self.kvstore = FakeKvStore()
+        self.kvstore.set('initial_client_update_done', True)
+        self.kv.return_value = self.kvstore
 
+    @mock.patch('percona_utils.kv')
     @mock.patch.object(hooks, 'config_changed')
     @mock.patch.object(hooks, 'get_cluster_host_ip')
     @mock.patch('percona_utils.notify_bootstrapped')
@@ -1044,13 +1059,15 @@ class TestClusterRelation(CharmTestCase):
                                         mock_leader_get, mock_get_wsrep_value,
                                         mock_notify_bootstrapped,
                                         mock_cluster_host_ip,
-                                        mock_config_changed):
+                                        mock_config_changed,
+                                        mock_kv):
         def fake_leader_get(k):
             return {
                 'bootstrap-uuid': '1-2-3-4',
                 'wsrep_cluster_state_uuid': '1-2-3-4',
             }[k]
 
+        mock_kv.return_value = self.kvstore
         mock_leader_get.side_effect = fake_leader_get
         mock_get_wsrep_value.side_effect = fake_leader_get
         mock_is_bootstrapped.return_value = True

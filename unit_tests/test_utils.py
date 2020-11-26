@@ -1,12 +1,15 @@
 import io
 import os
 import logging
+import sys
 import unittest
 
 import yaml
 
 from contextlib import contextmanager
 from mock import patch, MagicMock
+
+from charmhelpers.core.unitdata import Record
 
 
 def load_config():
@@ -143,3 +146,55 @@ def patch_open():
 
     with patch('builtins.open', stub_open):
         yield mock_open, mock_file
+
+
+class FakeKvStore():
+
+    def __init__(self):
+        self._store = {}
+        self._closed = False
+        self._flushed = False
+
+    def close(self):
+        self._closed = True
+        self._flushed = True
+
+    def get(self, key, default=None, record=False):
+        if key not in self._store:
+            return default
+        if record:
+            return Record(self._store[key])
+        return self._store[key]
+
+    def getrange(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def update(self, mapping, prefix=""):
+        for k, v in mapping.items():
+            self.set("%s%s" % (prefix, k), v)
+
+    def unset(self, key):
+        if key in self._store:
+            del self._store[key]
+
+    def unsetrange(self, keys=None, prefix=""):
+        raise NotImplementedError
+
+    def set(self, key, value):
+        self._store[key] = value
+        return value
+
+    def delta(self, mapping, prefix):
+        raise NotImplementedError
+
+    def hook_scope(self, name=""):
+        raise NotImplementedError
+
+    def flush(self, save=True):
+        self._flushed = True
+
+    def gethistory(self, key, deserialize=False):
+        raise NotImplementedError
+
+    def debug(self, fh=sys.stderr):
+        raise NotImplementedError

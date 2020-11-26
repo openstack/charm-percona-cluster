@@ -8,7 +8,7 @@ from charmhelpers.fetch import SourceConfigError
 
 import percona_utils
 
-from test_utils import CharmTestCase, patch_open
+from test_utils import CharmTestCase, patch_open, FakeKvStore
 
 os.environ['JUJU_UNIT_NAME'] = 'percona-cluster/2'
 
@@ -556,10 +556,16 @@ class UtilsTestsStatus(CharmTestCase):
         'distributed_wait',
         'cluster_ready',
         'seeded',
+        'kv',
     ]
 
     def setUp(self):
         super(UtilsTestsStatus, self).setUp(percona_utils, self.TO_PATCH)
+        self._kvstore = FakeKvStore()
+        self.kv.return_value = self._kvstore
+        _m = mock.patch("charmhelpers.core.unitdata.kv")
+        self.mock_kv = _m.start()
+        self.addCleanup(_m.stop)
 
     @mock.patch.object(percona_utils, 'seeded')
     def test_single_unit(self, mock_seeded):
