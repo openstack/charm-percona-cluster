@@ -50,6 +50,7 @@ from charmhelpers.core.host import (
     mkdir,
     CompareHostReleases,
     pwgen,
+    init_is_systemd
 )
 from charmhelpers.core.templating import render
 from charmhelpers.fetch import (
@@ -166,6 +167,8 @@ RES_MONITOR_PARAMS = ('params user="sstuser" password="%(sstpass)s" '
                       'OCF_CHECK_LEVEL="1" '
                       'meta migration-threshold=INFINITY failure-timeout=5s')
 
+SYSTEMD_OVERRIDE_PATH = '/etc/systemd/system/mysql.service.d/charm-nofile.conf'
+
 MYSQL_SOCKET = "/var/run/mysqld/mysqld.sock"
 
 
@@ -209,6 +212,24 @@ def install():
 
     install_percona_xtradb_cluster()
     install_mysql_ocf()
+
+
+def render_override(ctx):
+    # max_connections/table_open_cache are shrunk to fit within ulimits.
+    # The following formula is taken from sql/mysqld.cc.
+    if init_is_systemd():
+        open_files_limit = max(
+            (ctx['max_connections'] + 1) + 10 + (ctx['table_open_cache']*2),
+            (ctx['max_connections'] + 1) * 5,
+            5000)
+        if not os.path.exists(os.path.dirname(SYSTEMD_OVERRIDE_PATH)):
+            os.makedirs(os.path.dirname(SYSTEMD_OVERRIDE_PATH))
+        pre_hash = file_hash(SYSTEMD_OVERRIDE_PATH)
+        render(os.path.basename(SYSTEMD_OVERRIDE_PATH),
+               SYSTEMD_OVERRIDE_PATH,
+               {'open_files_limit': open_files_limit})
+        if pre_hash != file_hash(SYSTEMD_OVERRIDE_PATH):
+            subprocess.check_call(['systemctl', 'daemon-reload'])
 
 
 def render_config(hosts=None):
@@ -277,8 +298,10 @@ def render_config(hosts=None):
     context.update(PerconaClusterHelper().parse_config())
     render(os.path.basename(config_file), config_file, context, perms=0o444)
 
+    render_override(context)
 
-def render_config_restart_on_changed(hosts, bootstrap=False):
+
+def render_config_restart_on_changed(hosts):
     """Render mysql config and restart mysql service if file changes as a
     result.
 
@@ -290,12 +313,22 @@ def render_config_restart_on_changed(hosts, bootstrap=False):
     it is started so long as the new node to be added is guaranteed to have
     been restarted so as to apply the new config.
     """
+    if is_leader() and not is_leader_bootstrapped():
+        bootstrap = True
+    else:
+        bootstrap = False
+
     config_file = resolve_cnf_file()
-    pre_hash = file_hash(config_file)
+    pre_hash_config = file_hash(config_file)
+    pre_hash_override = file_hash(SYSTEMD_OVERRIDE_PATH)
     render_config(hosts)
     create_binlogs_directory()
     update_db_rels = False
-    if file_hash(config_file) != pre_hash or bootstrap:
+
+    hashes_changed = (file_hash(config_file) != pre_hash_config) or \
+                     (file_hash(SYSTEMD_OVERRIDE_PATH) != pre_hash_override)
+
+    if hashes_changed or bootstrap:
         if bootstrap:
             bootstrap_pxc()
             # NOTE(dosaboy): this will not actually do anything if no cluster
@@ -584,8 +617,7 @@ def config_changed():
         log("Leader unit - bootstrap required={}"
             .format(not leader_bootstrapped),
             DEBUG)
-        render_config_restart_on_changed(hosts,
-                                         bootstrap=not leader_bootstrapped)
+        render_config_restart_on_changed(hosts)
     elif (leader_bootstrapped and
           is_sufficient_peers() and not
           cluster_series_upgrading):
