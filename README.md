@@ -11,12 +11,25 @@ list of such charms can be obtained from the [Charm
 Store][charms-requires-mysql-shared] (the charms officially supported by the
 OpenStack Charms project are published by 'openstack-charmers').
 
-> **Important**: The eoan series is the last series supported by the
-  percona-cluster charm. It is replaced by the
-  [mysql-innodb-cluster][mysql-innodb-cluster-charm] and
-  [mysql-router][mysql-router-charm] charms in the focal series. See
-  [percona-cluster charm: series upgrade to
-  Focal][cdg-percona-migration-to-mysql8] for migration steps.
+## Series upgrades
+
+### Deprecation of percona-cluster charm on focal series
+
+The eoan series is the last series supported by the percona-cluster charm. It
+is replaced by the [mysql-innodb-cluster][mysql-innodb-cluster-charm] and
+[mysql-router][mysql-router-charm] charms in the focal series. The migration
+steps are documented in [percona-cluster charm: series upgrade to
+focal][cdg-upgrade-special-percona].
+
+> **Caution**: Do not upgrade (to the focal series) the machines hosting
+  percona-cluster units. To be clear, if percona-cluster is containerised then
+  it is the LXD container that must not be upgraded.
+
+### Upgrades to non-focal series
+
+The procedure to upgrade to a pre-focal series, and thus to a new Percona
+version, is documented in the [OpenStack Charms Deployment
+Guide][cdg-upgrade-series-openstack-procedures].
 
 # Usage
 
@@ -206,16 +219,6 @@ space should be used for access to MySQL databases services from other charms.
   will continue to function; this option is preferred over any network space
   binding provided for the 'shared-db' relation if set.
 
-## Series upgrade
-
-The procedure to upgrade the series of the machines hosting percona-cluster is
-documented in the [OpenStack Charms Deployment Guide][cdg-procedures].
-
-Upstream documentation is also available:
-
-* [Upgrading Percona XtraDB Cluster][upstream-upgrading-percona]
-* [Percona XtraDB Cluster In-Place Upgrading Guide: From 5.5 to 5.6][upstream-upgrading-55-to-56]
-* [Galera replication - how to recover a PXC cluster][upstream-recovering]
 
 # Bugs
 
@@ -232,12 +235,9 @@ For general charm questions refer to the [OpenStack Charm Guide][cg].
 [mysql-memory-calculator]: http://www.mysqlcalculator.com/
 [lp-bugs-charm-percona-cluster]: https://bugs.launchpad.net/charm-percona-cluster/+filebug
 [upstream-performance-schema]: http://dev.mysql.com/doc/relnotes/mysql/5.6/en/news-5-6-6.html#mysqld-5-6-6-performance-schema
-[upstream-upgrading-percona]: https://www.percona.com/doc/percona-xtradb-cluster/LATEST/howtos/upgrade_guide.html
-[upstream-upgrading-55-to-56]: https://www.percona.com/doc/percona-xtradb-cluster/5.6/upgrading_guide_55_56.html
-[upstream-recovering]: https://www.percona.com/blog/2014/09/01/galera-replication-how-to-recover-a-pxc-cluster/
 [juju-docs-actions]: https://jaas.ai/docs/actions
-[cdg-percona-migration-to-mysql8]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-series-upgrade-specific-procedures.html#percona-cluster-charm-series-upgrade-to-focal
 [cdg-percona-startup]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-managing-power-events.html#id22
 [mysql-router-charm]: https://jaas.ai/mysql-router
 [mysql-innodb-cluster-charm]: https://jaas.ai/mysql-innodb-cluster
-[cdg-procedures]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-series-upgrade-openstack.html#procedures
+[cdg-upgrade-special-percona]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/percona-series-upgrade-to-focal.html
+[cdg-upgrade-series-openstack-procedures]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/upgrade-series-openstack.html#procedures
