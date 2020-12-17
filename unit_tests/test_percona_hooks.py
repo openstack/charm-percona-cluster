@@ -502,16 +502,14 @@ class TestConfigChanged(CharmTestCase):
         self.get_cluster_hosts.return_value = []
         hooks.config_changed()
         self.install_percona_xtradb_cluster.assert_called_once()
-        self.render_config_restart_on_changed.assert_called_once_with(
-            [], bootstrap=True)
+        self.render_config_restart_on_changed.assert_called_once_with([])
 
         # Render without peers, leader bootstrapped
         self.is_leader_bootstrapped.return_value = True
         self.get_cluster_hosts.return_value = []
         self.render_config_restart_on_changed.reset_mock()
         hooks.config_changed()
-        self.render_config_restart_on_changed.assert_called_once_with(
-            [], bootstrap=False)
+        self.render_config_restart_on_changed.assert_called_once_with([])
 
         # Render without hosts, leader bootstrapped, never clustered
         self.is_leader_bootstrapped.return_value = True
@@ -519,8 +517,7 @@ class TestConfigChanged(CharmTestCase):
 
         self.render_config_restart_on_changed.reset_mock()
         hooks.config_changed()
-        self.render_config_restart_on_changed.assert_called_once_with(
-            [], bootstrap=False)
+        self.render_config_restart_on_changed.assert_called_once_with([])
 
         # Clustered at least once
         self.clustered_once.return_value = True
@@ -532,7 +529,7 @@ class TestConfigChanged(CharmTestCase):
         self.render_config_restart_on_changed.reset_mock()
         hooks.config_changed()
         self.render_config_restart_on_changed.assert_called_once_with(
-            ['10.10.10.20', '10.10.10.30'], bootstrap=False)
+            ['10.10.10.20', '10.10.10.30'])
 
         # In none of the prior scenarios should update_root_password have been
         # called.
@@ -546,7 +543,7 @@ class TestConfigChanged(CharmTestCase):
         self.render_config_restart_on_changed.reset_mock()
         hooks.config_changed()
         self.render_config_restart_on_changed.assert_called_once_with(
-            ['10.10.10.20', '10.10.10.30'], bootstrap=False)
+            ['10.10.10.20', '10.10.10.30'])
         self.update_root_password.assert_called_once()
 
     def test_config_changed_render_non_leader(self):
@@ -844,6 +841,7 @@ class TestConfigs(CharmTestCase):
     TO_PATCH = [
         'config',
         'is_leader',
+        'render_override',
     ]
 
     def setUp(self):
@@ -1060,6 +1058,98 @@ class TestConfigs(CharmTestCase):
             '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
             context,
             perms=0o444)
+
+
+class TestRenderConfigRestartOnChanged(CharmTestCase):
+    TO_PATCH = [
+        'is_leader',
+        'is_leader_bootstrapped',
+        'bootstrap_pxc',
+        'resolve_cnf_file',
+        'file_hash',
+        'render_config',
+        'create_binlogs_directory',
+        'bootstrap_pxc',
+        'notify_bootstrapped',
+        'service_running',
+        'service_stop',
+        'service_restart',
+        'cluster_wait',
+        'mark_seeded',
+        'cluster_wait',
+        'update_client_db_relations',
+    ]
+
+    def setUp(self):
+        CharmTestCase.setUp(self, hooks, self.TO_PATCH)
+        self.is_leader.return_value = False
+        self.is_leader_bootstrapped.return_value = False
+        self.bootstrap_pxc.return_value = None
+        self.service_running.return_value = True
+        self.resolve_cnf_file.return_value = \
+            '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf'
+        self.file_hash.return_value = 'original'
+        self.service_restart.return_value = True
+
+    def _render_config_changed(self, hosts):
+        self.file_hash.return_value = 'changed'
+
+    def test_bootstrap_leader(self):
+        self.is_leader.return_value = True
+        self.is_leader_bootstrapped.return_value = False
+        self.render_config.side_effect = self._render_config_changed
+
+        hooks.render_config_restart_on_changed([])
+
+        self.bootstrap_pxc.assert_called_once()
+        self.service_restart.assert_not_called()
+
+    def test_bootstrapped_leader(self):
+        self.is_leader.return_value = True
+        self.is_leader_bootstrapped.return_value = True
+        self.render_config.side_effect = self._render_config_changed
+
+        hooks.render_config_restart_on_changed([])
+
+        self.bootstrap_pxc.assert_not_called()
+        self.service_restart.assert_called_once()
+
+    def test_noleader(self):
+        self.is_leader.return_value = False
+        self.is_leader_bootstrapped.return_value = False
+        self.render_config.side_effect = self._render_config_changed
+
+        hooks.render_config_restart_on_changed([])
+
+        self.bootstrap_pxc.assert_not_called()
+        self.service_restart.assert_called_once()
+
+    def test_nochange_bootstrap_leader(self):
+        self.is_leader.return_value = True
+        self.is_leader_bootstrapped.return_value = False
+
+        hooks.render_config_restart_on_changed([])
+
+        self.bootstrap_pxc.assert_called_once()
+        self.service_restart.assert_not_called()
+
+    def test_nochange_bootstrapped_leader(self):
+        self.is_leader.return_value = True
+        self.is_leader_bootstrapped.return_value = True
+
+        hooks.render_config_restart_on_changed([])
+
+        self.bootstrap_pxc.assert_not_called()
+        self.service_restart.assert_not_called()
+
+    def test_nochange_noleader(self):
+        self.is_leader.return_value = False
+        self.is_leader_bootstrapped.return_value = False
+
+        hooks.render_config_restart_on_changed([])
+
+        self.bootstrap_pxc.assert_not_called()
+        self.service_restart.assert_not_called()
 
 
 class TestClusterRelation(CharmTestCase):
