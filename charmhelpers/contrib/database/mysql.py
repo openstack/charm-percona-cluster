@@ -37,6 +37,7 @@ from charmhelpers.core.hookenv import (
     unit_get,
     log,
     DEBUG,
+    ERROR,
     INFO,
     WARNING,
     leader_get,
@@ -69,11 +70,14 @@ class MySQLHelper(object):
 
     def __init__(self, rpasswdf_template, upasswdf_template, host='localhost',
                  migrate_passwd_to_leader_storage=True,
-                 delete_ondisk_passwd_file=True, user="root", password=None, port=None):
+                 delete_ondisk_passwd_file=True, user="root", password=None,
+                 port=None, connect_timeout=None):
         self.user = user
         self.host = host
         self.password = password
         self.port = port
+        # default timeout of 30 seconds.
+        self.connect_timeout = connect_timeout or 30
 
         # Password file path templates
         self.root_passwd_file_template = rpasswdf_template
@@ -84,12 +88,18 @@ class MySQLHelper(object):
         self.delete_ondisk_passwd_file = delete_ondisk_passwd_file
         self.connection = None
 
-    def connect(self, user='root', password=None, host=None, port=None):
+    def connect(self, user='root', password=None, host=None, port=None,
+                connect_timeout=None):
         _connection_info = {
             "user": user or self.user,
             "passwd": password or self.password,
             "host": host or self.host
         }
+        # set the connection timeout; for mysql8 it can hang forever, so some
+        # timeout is required.
+        timeout = connect_timeout or self.connect_timeout
+        if timeout:
+            _connection_info["connect_timeout"] = timeout
         # port cannot be None but we also do not want to specify it unless it
         # has been explicit set.
         port = port or self.port
@@ -97,7 +107,12 @@ class MySQLHelper(object):
             _connection_info["port"] = port
 
         log("Opening db connection for %s@%s" % (user, host), level=DEBUG)
-        self.connection = MySQLdb.connect(**_connection_info)
+        try:
+            self.connection = MySQLdb.connect(**_connection_info)
+        except Exception as e:
+            log("Failed to connect to database due to '{}'".format(str(e)),
+                level=ERROR)
+            raise
 
     def database_exists(self, db_name):
         cursor = self.connection.cursor()
@@ -416,7 +431,7 @@ class MySQLHelper(object):
         # Otherwise assume localhost
         return '127.0.0.1'
 
-    def get_allowed_units(self, database, username, relation_id=None):
+    def get_allowed_units(self, database, username, relation_id=None, prefix=None):
         """Get list of units with access grants for database with username.
 
         This is typically used to provide shared-db relations with a list of
@@ -425,10 +440,12 @@ class MySQLHelper(object):
         if not self.connection:
             self.connect(password=self.get_mysql_root_password())
         allowed_units = set()
+        if not prefix:
+            prefix = database
         for unit in related_units(relation_id):
             settings = relation_get(rid=relation_id, unit=unit)
             # First check for setting with prefix, then without
-            for attr in ["%s_hostname" % (database), 'hostname']:
+            for attr in ["%s_hostname" % (prefix), 'hostname']:
                 hosts = settings.get(attr, None)
                 if hosts:
                     break
