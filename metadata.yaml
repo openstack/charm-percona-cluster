@@ -10,7 +10,6 @@ tags:
 series:
 - xenial
 - bionic
-- eoan
 extra-bindings:
   access:
 provides:
