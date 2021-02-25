@@ -1828,8 +1828,7 @@ def create_nagios_user():
         else:
             log("User 'nagios'@'localhost' already exists.", level="WARNING")
     # NOTE (rgildein): Update the user's password if it has changed.
-    m_helper.execute("ALTER USER 'nagios'@'localhost' IDENTIFIED BY "
-                     "'{passwd}';".format(passwd=nagios_password()))
+    m_helper.set_mysql_password('nagios', nagios_password())
 
 
 def set_nagios_user():

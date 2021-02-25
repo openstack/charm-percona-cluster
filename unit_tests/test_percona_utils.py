@@ -539,11 +539,14 @@ class UtilsTests(CharmTestCase):
 
         mock_apt_update.assert_not_called()
 
+    @mock.patch.object(percona_utils, "lsb_release")
     @mock.patch.object(percona_utils, "get_db_helper")
     @mock.patch.object(percona_utils, "write_nagios_my_cnf")
     def test_create_nagios_user(self,
                                 mock_create_nagios_mysql_credential,
-                                mock_get_db_helper):
+                                mock_get_db_helper,
+                                mock_lsb_release):
+        mock_lsb_release.return_value = {'DISTRIB_CODENAME': 'bionic'}
         my_mock = mock.Mock()
         self.leader_get.return_value = "1234"
         self.is_leader.return_value = True
@@ -555,8 +558,8 @@ class UtilsTests(CharmTestCase):
         )
         my_mock.execute.assert_has_calls([
             mock.call("CREATE USER 'nagios'@'localhost';"),
-            mock.call("ALTER USER 'nagios'@'localhost' IDENTIFIED BY '1234';"),
         ])
+        my_mock.set_mysql_password.assert_called_once_with('nagios', '1234')
 
         class OperationalError(Exception):
             pass
@@ -566,7 +569,7 @@ class UtilsTests(CharmTestCase):
         def mysql_create_user(*args, **kwargs):
             raise OperationalError()
 
-        my_mock.select.return_value = True
+        my_mock.select.return_value = False
         my_mock.execute.side_effect = mysql_create_user
         with self.assertRaises(OperationalError):
             percona_utils.create_nagios_user()
