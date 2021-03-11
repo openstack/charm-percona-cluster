@@ -1,0 +1,26 @@
+- project:
+    templates:
+      - charm-unit-jobs
+    check:
+      jobs:
+      - bionic_model-bionic-ha
+      - xenial_model-xenial-ha
+
+- job:
+    name: bionic_model-bionic-ha
+    parent: func-target
+    dependencies:
+      - osci-lint
+      - tox-py35
+      - tox-py36
+      - tox-py37
+      - tox-py38
+    vars:
+      tox_extra_args: bionic_model:bionic-ha
+- job:
+    name: xenial_model-xenial-ha
+    parent: func-target
+    dependencies:
+      - bionic_model-bionic-ha
+    vars:
+      tox_extra_args: xenial_model:xenial-ha
