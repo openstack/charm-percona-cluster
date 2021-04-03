@@ -1,4 +1,4 @@
-# Copyright 2016 Canonical Ltd
+# Copyright 2014-2015 Canonical Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-class OSContextError(Exception):
-    """Raised when an error occurs during context generation.
-
-    This exception is principally used in contrib.openstack.context
-    """
-    pass
-
-
-class ServiceActionError(Exception):
-    """Raised when a service action (stop/start/ etc) failed."""
-    pass
+# dummy __init__.py to fool syncer into thinking this is a syncable python
+# module
