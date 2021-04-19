@@ -539,27 +539,32 @@ class UtilsTests(CharmTestCase):
 
         mock_apt_update.assert_not_called()
 
+    @mock.patch.object(percona_utils, "nagios_password")
     @mock.patch.object(percona_utils, "lsb_release")
     @mock.patch.object(percona_utils, "get_db_helper")
     @mock.patch.object(percona_utils, "write_nagios_my_cnf")
     def test_create_nagios_user(self,
                                 mock_create_nagios_mysql_credential,
                                 mock_get_db_helper,
-                                mock_lsb_release):
+                                mock_lsb_release,
+                                mock_nagios_password):
         mock_lsb_release.return_value = {'DISTRIB_CODENAME': 'bionic'}
         my_mock = mock.Mock()
-        self.leader_get.return_value = "1234"
+        mock_nagios_password.return_value = "1234"
         self.is_leader.return_value = True
         mock_get_db_helper.return_value = my_mock
+        mock_cursor = mock.Mock()
+        my_mock.connection.cursor.return_value = mock_cursor
 
         percona_utils.create_nagios_user()
         my_mock.select.assert_called_once_with(
             "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'nagios')"
         )
         my_mock.execute.assert_has_calls([
-            mock.call("CREATE USER 'nagios'@'localhost';"),
+            mock.call(
+                "CREATE USER 'nagios'@'localhost' IDENTIFIED BY '1234';"),
         ])
-        my_mock.set_mysql_password.assert_called_once_with('nagios', '1234')
+        mock_cursor.execute.assert_not_called()
 
         class OperationalError(Exception):
             pass
@@ -573,6 +578,16 @@ class UtilsTests(CharmTestCase):
         my_mock.execute.side_effect = mysql_create_user
         with self.assertRaises(OperationalError):
             percona_utils.create_nagios_user()
+        mock_cursor.execute.assert_not_called()
+
+        my_mock.select.return_value = True
+        percona_utils.create_nagios_user()
+        mock_cursor.execute.assert_has_calls([
+            mock.call('UPDATE mysql.user SET authentication_string = '
+                      'PASSWORD( %s ) WHERE user = %s;', ('1234', 'nagios')),
+            mock.call('FLUSH PRIVILEGES;'),
+        ])
+        my_mock.connection.commit.assert_called_once_with()
 
     def test_get_nrpe_threads_connected_thresholds(self):
         """Test function for getting and verifying threshold values."""

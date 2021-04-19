@@ -124,7 +124,8 @@ class NagiosTestCase(CharmTestCase):
         self.is_leader.return_value = True
         self.pwgen.return_value = "1234"
         actions.generate_nagios_password([])
-        self.leader_set.assert_called_once_with({"nagios-password": "1234"})
+        self.leader_set.assert_called_once_with(
+            {"mysql-nagios.passwd": "1234"})
         mock_set_nagios_user.assert_called_once_with()
         self.action_set.assert_called_once_with(
             {"output": "New password for nagios created successfully."}

@@ -830,8 +830,8 @@ def assess_status(configs):
             base = determine_packages()[0]
             yield base
             if '.' not in base:
-                for i in range(5, 7+1):
-                    yield base+'-5.'+str(i)
+                for i in range(5, 7 + 1):
+                    yield base + '-5.' + str(i)
         version = None
         for pkg in _possible_packages():
             version = get_upstream_version(pkg)
@@ -1054,7 +1054,11 @@ root_password = partial(_get_password, 'root-password')
 
 sst_password = partial(_get_password, 'sst-password')
 
-nagios_password = partial(_get_password, 'nagios-password')
+
+def nagios_password():
+    """Get the nagios password using the MySQLdb helper in charmhelpers"""
+    m_helper = get_db_helper()
+    return m_helper.get_mysql_password('nagios')
 
 
 def pxc_installed():
@@ -1802,38 +1806,93 @@ def create_nagios_user():
 
     :raises: OperationalError
     """
-    m_helper = get_db_helper()
-    try:
-        m_helper.connect(password=m_helper.get_mysql_root_password())
-    except OperationalError:
-        log("Could not connect to db", level=ERROR)
-        raise
-    # NOTE (rgildein): This user has access to the SHOW GLOBAL STATUS
-    # statement, which does not require any privilege, only the ability to
-    # connect to the server.
-    nagios_exists = False
-    try:
-        # NOTE (rgildein): This method of creation nagios user should be
-        # replaced by the `MySQLHelper.create_user` method after
-        # bug #1905586 has been fixed and merged.
-        nagios_exists = m_helper.select(
-            "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'nagios')"
-        )
-        m_helper.execute("CREATE USER 'nagios'@'localhost';")
-    except OperationalError as error:
-        if not nagios_exists:
-            log("Creating user nagios failed due: {}".format(error),
-                level="ERROR")
-            raise error
-        else:
-            log("User 'nagios'@'localhost' already exists.", level="WARNING")
+    m_helper = None
+    if is_leader():
+        # Only run the CREATE USER on the leader; it does replicate to other
+        # instances.
+        m_helper = get_db_helper()
+        try:
+            m_helper.connect(password=m_helper.get_mysql_root_password())
+        except OperationalError:
+            log("Could not connect to db", level=ERROR)
+            raise
+        # NOTE (rgildein): This user has access to the SHOW GLOBAL STATUS
+        # statement, which does not require any privilege, only the ability to
+        # connect to the server.
+        nagios_exists = False
+        try:
+            # NOTE (rgildein): This method of creation nagios user should be
+            # replaced by the `MySQLHelper.create_user` method after
+            # bug #1905586 has been fixed and merged.
+            nagios_exists = m_helper.select(
+                "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = 'nagios')"
+            )
+            m_helper.execute(
+                "CREATE USER 'nagios'@'localhost' IDENTIFIED BY '{}';"
+                .format(nagios_password()))
+            m_helper.flush_priviledges()
+            log("Created user nagios in database.", level="INFO")
+            return
+        except OperationalError as error:
+            if not nagios_exists:
+                log("Creating user nagios failed due: {}".format(error),
+                    level="ERROR")
+                raise error
+            else:
+                log("User 'nagios'@'localhost' already exists.", level="INFO")
+
     # NOTE (rgildein): Update the user's password if it has changed.
-    m_helper.set_mysql_password('nagios', nagios_password())
+    # Update the password for username with new_password.
+
+    # BUG: #1925042
+    # This is a strategic hotfix to fix nagios password updates.  The
+    # charm-helpers library function set_mysql_password() tries to use the
+    # username that was passed, rather than root, to update the mysql.user
+    # table and this fails.  Instead, this function uses root to update the
+    # password and flush privileges.  Note this needs to be run on each node as
+    # it uses UPDATE and flush privileges.
+
+    # See https://galeracluster.com/library/kb/user-changes.html
+
+    # copied and adapted from MySQLHelper.set_mysql_password()
+    cursor = None
+    try:
+        # NOTE(freyes): Due to skip-name-resolve root@$HOSTNAME account
+        # fails when using SET PASSWORD so using UPDATE against the
+        # mysql.user table is needed, but changes to this table are not
+        # replicated across the cluster, so this update needs to run in
+        # all the nodes. More info at
+        # http://galeracluster.com/documentation-webpages/userchanges.html
+        release = CompareHostReleases(lsb_release()['DISTRIB_CODENAME'])
+        if release < 'bionic':
+            SQL_UPDATE_PASSWD = ("UPDATE mysql.user SET password = "
+                                 "PASSWORD( %s ) WHERE user = %s;")
+        else:
+            # PXC 5.7 (introduced in Bionic) uses authentication_string
+            SQL_UPDATE_PASSWD = ("UPDATE mysql.user SET "
+                                 "authentication_string = "
+                                 "PASSWORD( %s ) WHERE user = %s;")
+
+        if m_helper is None:
+            m_helper = get_db_helper()
+        try:
+            m_helper.connect(password=m_helper.get_mysql_root_password())
+        except OperationalError:
+            log("Could not connect to db", level=WARNING)
+            return
+        cursor = m_helper.connection.cursor()
+        cursor.execute(SQL_UPDATE_PASSWD, (nagios_password(), 'nagios'))
+        cursor.execute('FLUSH PRIVILEGES;')
+        m_helper.connection.commit()
+    except OperationalError as ex:
+        log("Could not connect to db: {}".format(str(ex)), level=WARNING)
+    finally:
+        if cursor:
+            cursor.close()
 
 
 def set_nagios_user():
     """Create MySQL user and configuration file with user credentials."""
-    if is_leader():
-        create_nagios_user()
+    create_nagios_user()
 
     write_nagios_my_cnf()

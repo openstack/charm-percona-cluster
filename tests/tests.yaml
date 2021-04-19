@@ -19,3 +19,5 @@ smoke_bundles:
   - bionic_model: bionic-ha
 dev_bundles:
   - xenial_series_upgrade_model: xenial-queens-ha-series-upgrade
+  - bionic_model: bionic-nagios
+  - bionic_model: bionic-nagios-ha

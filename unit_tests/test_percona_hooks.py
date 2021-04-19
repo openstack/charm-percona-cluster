@@ -816,7 +816,8 @@ class TestUpgradeCharm(CharmTestCase):
         self.is_leader.return_value = True
         self.is_unit_paused_set.return_value = False
         self.get_relation_ip.return_value = '10.10.10.10'
-        self.leader_get.side_effect = [None, 'mypasswd', 'mypasswd']
+        self.leader_get.side_effect = [
+            None, 'mypasswd', 'mypasswd', 'nagios-password']
 
         def c(k):
             values = {'wsrep_ready': 'on',
@@ -833,7 +834,9 @@ class TestUpgradeCharm(CharmTestCase):
 
         self.leader_set.assert_has_calls(
             [mock.call(**{'leader-ip': '10.10.10.10'}),
-             mock.call(**{'root-password': 'mypasswd'})])
+             mock.call(**{'root-password': 'mypasswd'}),
+             mock.call(**{'mysql-nagios.passwd': 'nagios-password',
+                          'nagios-password': None})])
 
 
 class TestConfigs(CharmTestCase):

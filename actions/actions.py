@@ -227,7 +227,7 @@ def mysqldump(args):
 def generate_nagios_password(args):
     """Regenerate nagios password."""
     if is_leader():
-        leader_set({"nagios-password": pwgen()})
+        leader_set({"mysql-nagios.passwd": pwgen()})
         percona_utils.set_nagios_user()
         action_set({"output": "New password for nagios created successfully."})
     else:

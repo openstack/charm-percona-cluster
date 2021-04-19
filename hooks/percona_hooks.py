@@ -530,6 +530,14 @@ def upgrade():
         if not leader_get('root-password') and leader_get('mysql.passwd'):
             leader_set(**{'root-password': leader_get('mysql.passwd')})
 
+        # move the nagios password out of nagios-password and into
+        # mysql-nagios.passwd
+        # BUG: #1925042
+        nagios_password = leader_get('nagios-password')
+        if nagios_password:
+            leader_set(**{"mysql-nagios.passwd": nagios_password,
+                          "nagios-password": None})
+
         # On upgrade-charm we assume the cluster was complete at some point
         kvstore = kv()
         initial_clustered = kvstore.get(INITIAL_CLUSTERED_KEY, False)
