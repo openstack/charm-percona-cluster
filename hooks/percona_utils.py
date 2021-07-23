@@ -1208,8 +1208,9 @@ def get_server_id():
     """
     MAX_SERVER_ID = 2**32 - 1
 
-    # Get the juju unit number
-    server_id = int(local_unit().split('/')[-1])
+    # Get the juju unit number and shift it by cluster_id so that
+    # 2 clusters with different cluster_id have unique server_ids
+    server_id = int(local_unit().split('/')[-1]) + int(cluster_id)
 
     # Server ID of 0 indicates disabled replication, use the max instead
     if server_id == 0:
