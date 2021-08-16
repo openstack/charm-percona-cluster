@@ -219,6 +219,21 @@ def install():
     install_mysql_ocf()
 
 
+def has_async_replication():
+    """Returns whether or not an asynchronous replication is available.
+
+    Asynchronous replication of the database is available when a user has
+    related two percona-cluster applications via one of the
+    mysql-async-replication relations (master or slave). This method will
+    return true if one of those relations exists.
+
+    :returns: True if an asynchronous replication relation exists, False
+              otherwise.
+    :rtype: bool
+    """
+    return is_relation_made('master') or is_relation_made('slave')
+
+
 def render_override(ctx):
     # max_connections/table_open_cache are shrunk to fit within ulimits.
     # The following formula is taken from sql/mysqld.cc.
@@ -295,7 +310,7 @@ def render_config(hosts=None):
         if 'wsrep_slave_threads' not in context:
             context['wsrep_slave_threads'] = 48
 
-    if config('databases-to-replicate'):
+    if config('databases-to-replicate') and has_async_replication():
         context['databases_to_replicate'] = get_databases_to_replicate()
 
     context['server-id'] = get_server_id()

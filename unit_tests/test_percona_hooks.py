@@ -1001,6 +1001,89 @@ class TestConfigs(CharmTestCase):
             context,
             perms=0o444)
 
+    @mock.patch.object(hooks, 'get_databases_to_replicate')
+    @mock.patch.object(hooks, 'has_async_replication')
+    @mock.patch.object(hooks, 'is_unit_upgrading_set')
+    @mock.patch.object(os, 'makedirs')
+    @mock.patch.object(hooks, 'get_cluster_host_ip')
+    @mock.patch.object(hooks, 'get_wsrep_provider_options')
+    @mock.patch.object(PerconaClusterHelper, 'parse_config')
+    @mock.patch.object(hooks, 'render')
+    @mock.patch.object(hooks, 'sst_password')
+    @mock.patch.object(hooks, 'lsb_release')
+    def test_render_config_async_rep(self,
+                                     lsb_release,
+                                     sst_password,
+                                     render,
+                                     parse_config,
+                                     get_wsrep_provider_options,
+                                     get_cluster_host_ip,
+                                     makedirs,
+                                     mock_is_unit_upgrading_set,
+                                     mock_has_async_replication,
+                                     mock_get_databases_to_replicate):
+        mock_get_databases_to_replicate.return_value = 'replicate-me'
+        self.test_config.set('databases-to-replicate', 'replicate-me')
+        mock_has_async_replication.return_value = False
+        mock_is_unit_upgrading_set.return_value = False
+        parse_config.return_value = {'key_buffer': '32M'}
+        get_cluster_host_ip.return_value = '10.1.1.1'
+        get_wsrep_provider_options.return_value = None
+        sst_password.return_value = 'sstpassword'
+        lsb_release.return_value = {'DISTRIB_CODENAME': 'bionic'}
+        context = {
+            'wsrep_slave_threads': 48,
+            'server_id': hooks.get_server_id(),
+            'server-id': hooks.get_server_id(),
+            'is_leader': hooks.is_leader(),
+            'series_upgrade': hooks.is_unit_upgrading_set(),
+            'private_address': '10.1.1.1',
+            'innodb_autoinc_lock_mode': '2',
+            'cluster_hosts': '',
+            'enable_binlogs': self.default_config['enable-binlogs'],
+            'sst_password': 'sstpassword',
+            'sst_method': self.default_config['sst-method'],
+            'pxc_strict_mode': 'enforcing',
+            'binlogs_max_size': self.default_config['binlogs-max-size'],
+            'cluster_name': 'juju_cluster',
+            'innodb_file_per_table':
+            self.default_config['innodb-file-per-table'],
+            'table_open_cache': self.default_config['table-open-cache'],
+            'binlogs_path': self.default_config['binlogs-path'],
+            'binlogs_expire_days': self.default_config['binlogs-expire-days'],
+            'performance_schema': self.default_config['performance-schema'],
+            'key_buffer': '32M',
+            'default_storage_engine': 'InnoDB',
+            'wsrep_log_conflicts': True,
+            'ipv6': False,
+            'wsrep_provider': '/usr/lib/galera3/libgalera_smm.so',
+        }
+
+        # Here, we run the test without the async replication configured but
+        # with the databases-to-replicate option configured in order to confirm
+        # that the databases_to_replicate context is NOT passed to the template
+        # engine
+        hooks.render_config()
+        hooks.render.assert_called_once_with(
+            'mysqld.cnf',
+            '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
+            context,
+            perms=0o444)
+
+        # Now, configure the async replication relationship and validate that
+        # the databases_to_replicate context is passed through to the template
+        # engine.
+        mock_has_async_replication.return_value = True
+        context['databases_to_replicate'] = 'replicate-me'
+
+        hooks.render.reset_mock()
+        hooks.render_config()
+        hooks.render.assert_called_once_with(
+            'mysqld.cnf',
+            '/etc/mysql/percona-xtradb-cluster.conf.d/mysqld.cnf',
+            context,
+            perms=0o444)
+
     @mock.patch.object(hooks, 'is_unit_upgrading_set')
     @mock.patch.object(os, 'makedirs')
     @mock.patch.object(hooks, 'get_cluster_host_ip')
