@@ -365,3 +365,13 @@ options:
       This configuration option represents the warning and critical percentages
       that are used to check the number of threads connected to MySQL.
       The value should be written as a string containing two numbers separated by commas.
+  max-connect-errors:
+    type: int
+    default: 100
+    description: |
+      This setting limits the number of successive unsuccessful connection
+      requests that a host can make to MySQL. After max-connect-errors
+      successive connection requests from a host are interrupted without a
+      successful connection, the MySQL server blocks that host from making
+      further connections.
+      This setting is only for Ubuntu Xenial and newer releases.

@@ -273,6 +273,7 @@ def render_config(hosts=None):
         'binlogs_max_size': config('binlogs-max-size'),
         'binlogs_expire_days': config('binlogs-expire-days'),
         'performance_schema': config('performance-schema'),
+        'max_connect_errors': config('max-connect-errors'),
         'is_leader': is_leader(),
         'server_id': get_server_id(),
         'series_upgrade': is_unit_upgrading_set(),

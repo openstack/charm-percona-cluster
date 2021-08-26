@@ -44,6 +44,10 @@ myisam-recover         = {{ myisam_recover }}
 max_connections = {{ max_connections }}
 {% endif %}
 
+{% if max_connect_errors %}
+max_connect_errors = {{ max_connect_errors }}
+{% endif %}
+
 {% if wait_timeout != -1 -%}
 # Seconds before clearing idle connections
 wait_timeout = {{ wait_timeout }}
