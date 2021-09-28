@@ -187,7 +187,7 @@ class MySQLHelper(object):
             cursor.close()
 
     def execute(self, sql):
-        """Execute arbitary SQL against the database."""
+        """Execute arbitrary SQL against the database."""
         cursor = self.connection.cursor()
         try:
             cursor.execute(sql)
