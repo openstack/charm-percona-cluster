@@ -6,10 +6,11 @@ applications:
     charm: ../../../percona-cluster
     num_units: 1
   keystone:
-    charm: cs:~openstack-charmers-next/keystone
+    charm: cs:~openstack-charmers/keystone
     num_units: 1
     options:
       token-expiration: 60
+    channel: candidate
   nagios:
     charm: cs:nagios
     series: bionic

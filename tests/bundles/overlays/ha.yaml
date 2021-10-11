@@ -9,7 +9,8 @@ applications:
       vip: {{ TEST_VIP00 }}
       min-cluster-size: 3
   hacluster:
-    charm: cs:~openstack-charmers-next/hacluster
+    charm: cs:~openstack-charmers/hacluster
     num_units: 0
     options:
       cluster_count: 3
+    channel: candidate
