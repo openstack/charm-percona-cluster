@@ -13,4 +13,3 @@ applications:
     options:
       openstack-origin: cloud:xenial-queens
       token-expiration: 60
-    channel: candidate

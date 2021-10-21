@@ -12,4 +12,3 @@ applications:
     num_units: 1
     options:
       token-expiration: 60
-    channel: candidate
