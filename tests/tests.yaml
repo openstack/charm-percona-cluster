@@ -4,9 +4,6 @@ tests:
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterColdStartTest
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterCharmTests
    - zaza.openstack.charm_tests.mysql.tests.PerconaClusterScaleTests
- - xenial_model:
-   - zaza.openstack.charm_tests.mysql.tests.PerconaClusterCharmTests
-   - zaza.openstack.charm_tests.mysql.tests.PerconaClusterScaleTests
  - xenial_series_upgrade_model:
    - zaza.openstack.charm_tests.series_upgrade.tests.XenialBionicSeriesUpgrade
 configure:
@@ -14,10 +11,12 @@ configure:
 target_deploy_status:
 gate_bundles:
   - bionic_model: bionic-ha
-  - xenial_model: xenial-ha
 smoke_bundles:
   - bionic_model: bionic-ha
 dev_bundles:
   - xenial_series_upgrade_model: xenial-queens-ha-series-upgrade
   - bionic_model: bionic-nagios
   - bionic_model: bionic-nagios-ha
+tests_options:
+  force_deploy:
+    - xenial-queens-ha-series-upgrade

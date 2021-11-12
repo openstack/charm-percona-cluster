@@ -8,7 +8,6 @@ description: |
 tags:
 - databases
 series:
-- xenial
 - bionic
 extra-bindings:
   access:
