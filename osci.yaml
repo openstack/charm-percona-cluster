@@ -1,9 +1,13 @@
 - project:
     templates:
-      - charm-yoga-unit-jobs
+      - charm-unit-jobs-py36
     check:
       jobs:
       - bionic_model-bionic-ha
+    vars:
+      needs_charm_build: true
+      charm_build_name: percona-cluster
+      build_type: charmcraft
 
 - job:
     name: bionic_model-bionic-ha
@@ -11,7 +15,5 @@
     dependencies:
       - osci-lint
       - tox-py36
-      - tox-py38
-      - tox-py39
     vars:
       tox_extra_args: bionic_model:bionic-ha

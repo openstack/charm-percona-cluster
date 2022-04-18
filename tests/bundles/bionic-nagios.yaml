@@ -3,19 +3,20 @@ series: bionic
 applications:
   percona-cluster:
     series: bionic
-    charm: ../../../percona-cluster
+    charm: ../../percona-cluster.charm
     num_units: 1
   keystone:
-    charm: cs:~openstack-charmers-next/keystone
+    charm: ch:keystone
+    channel: queens/edge
     num_units: 1
     options:
       token-expiration: 60
   nagios:
-    charm: cs:nagios
+    charm: ch:nagios
     series: bionic
     num_units: 1
   nrpe:
-    charm: cs:nrpe
+    charm: ch:nrpe
 
 relations:
 - - keystone:shared-db

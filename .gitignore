@@ -11,3 +11,6 @@ __pycache__
 .stestr
 .unit-state.db
 func-results.json
+
+*.charm
+
