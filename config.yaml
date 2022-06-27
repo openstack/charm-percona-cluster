@@ -177,6 +177,12 @@ options:
     description: |
       Default multicast port number that will be used to communicate between HA
       Cluster nodes.
+  use-syslog:
+    type: boolean
+    default: False
+    description: |
+      Uses syslog instead of the default error log file (/var/log/mysql/error.log).
+      Setting this to True will allow MySQL service to log to syslog.
   enable-binlogs:
     type: boolean
     default: False
