@@ -465,8 +465,8 @@ def get_wsrep_value(key):
     try:
         cursor.execute("show status like '{}'".format(key))
         ret = cursor.fetchall()
-    except Exception:
-        log("Failed to get '%s'", ERROR)
+    except Exception as e:
+        log("Failed to get key={} '{}'".format(key, e), ERROR)
         return None
     finally:
         cursor.close()

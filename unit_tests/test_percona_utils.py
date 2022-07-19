@@ -321,6 +321,24 @@ class UtilsTests(CharmTestCase):
                          ['percona-xtradb-cluster-server-5.5',
                           'percona-xtradb-cluster-client-5.5'])
 
+    @mock.patch.object(percona_utils, 'log')
+    @mock.patch.object(percona_utils, 'get_db_helper')
+    def test_get_wsrep_value(self, get_db_helper, log):
+        _err_msg = '(000, "Query with \'wsrep_not_found_key\' failed")'
+        _log_msg = f"Failed to get key=wsrep_not_found_key '{_err_msg}'"
+
+        __db_helper = mock.MagicMock()
+        __db_helper.get_mysql_root_password.return_value = "password"
+        __db_helper.connect.return_value = True
+
+        __cursor = mock.MagicMock()
+        __cursor.execute.side_effect = Exception(_err_msg)
+        __db_helper.connection.cursor.return_value = __cursor
+
+        get_db_helper.return_value = __db_helper
+        percona_utils.get_wsrep_value('wsrep_not_found_key')
+        log.assert_called_with(_log_msg, 'ERROR')
+
     @mock.patch.object(percona_utils, 'get_wsrep_value')
     def test_cluster_in_sync_not_ready(self, _wsrep_value):
         _wsrep_value.side_effect = [None, None]
