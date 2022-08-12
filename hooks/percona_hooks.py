@@ -1132,12 +1132,6 @@ def update_nrpe_config():
                       critical=critical_threads)
     )
     nrpe_setup.write()
-    # request CPU governor check from nrpe relation to be performance
-    rel_settings = {
-        'requested_cpu_governor': 'performance',
-    }
-    for rid in relation_ids('nrpe-external-master'):
-        relation_set(relation_id=rid, relation_settings=rel_settings)
 
 
 @hooks.hook('master-relation-joined')
