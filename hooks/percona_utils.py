@@ -87,6 +87,7 @@ KEY = "keys/repo.percona.com"
 REPO = """deb http://repo.percona.com/apt {release} main
 deb-src http://repo.percona.com/apt {release} main"""
 SEEDED_MARKER = "{data_dir}/seeded"
+BACKUP_INFO = "{data_dir}/xtrabackup_info"
 HOSTS_FILE = '/etc/hosts'
 DEFAULT_MYSQL_PORT = 3306
 INITIAL_CLUSTERED_KEY = 'initial-cluster-complete'
@@ -164,6 +165,36 @@ def mark_seeded():
     with open(SEEDED_MARKER.format(data_dir=resolve_data_dir()),
               'w', encoding="utf-8") as seeded:
         seeded.write('done')
+
+
+def last_backup_sst():
+    """ Check if the last backup was an SST
+    The percona xtrabackup_info file (BACKUP_INFO) contains information about
+    the last backup/sync to this node, including the type of backup, either
+    incremental (IST) or full (SST).
+
+    We return True if we can successfully determine the last backup was SST
+    from the BACKUP_INFO file contents, otherwise we assume the last backup
+    was an incremental and return False.
+
+    @returns boolean
+    """
+    result = False
+    try:
+        with open(BACKUP_INFO.format(data_dir=resolve_data_dir()), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if re.match('^incremental = N($|\n)', line):
+                    result = True
+    except FileNotFoundError:
+        log("""Backup info file not found: %s, assuming last backup was
+            incremental""" %
+            BACKUP_INFO.format(data_dir=resolve_data_dir()), level=DEBUG)
+    except Exception:
+        log("""Unable to read backup info file: %s, assuming last backup was
+            incremental""" %
+            BACKUP_INFO.format(data_dir=resolve_data_dir()), level=DEBUG)
+    return result
 
 
 def setup_percona_repo():
@@ -702,7 +733,10 @@ def charm_check_func(ensure_seeded=False):
     :returns: (status, message)
     :rtype: Tuple[str, str]
     """
-    if ensure_seeded and not seeded():
+    # Ensure seeded file is replaced if told or after any SST event post
+    # bootstrap. resolves bug #2000107
+    if (not seeded() and
+            (ensure_seeded or (is_bootstrapped() and last_backup_sst()))):
         log("'seeded' file is missing but should exists; putting it back.")
         mark_seeded()
     if is_unit_upgrading_set():

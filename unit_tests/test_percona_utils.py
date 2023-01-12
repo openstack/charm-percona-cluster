@@ -643,6 +643,40 @@ class UtilsTests(CharmTestCase):
         thresholds = percona_utils.get_nrpe_threads_connected_thresholds()
         self.assertEqual(thresholds, (80, 90))
 
+    def test_last_backup_sst(self):
+        # test backup info file when backup was SST
+        mock_read_data = 'incremental = N\n'
+        mock_open = mock.mock_open(read_data=mock_read_data)
+        with mock.patch('percona_utils.open', mock_open):
+            result = percona_utils.last_backup_sst()
+        self.assertEqual(result, True)
+
+        # test backup info file when backup was IST
+        mock_read_data = 'incremental = Y\n'
+        mock_open = mock.mock_open(read_data=mock_read_data)
+        with mock.patch('percona_utils.open', mock_open):
+            result = percona_utils.last_backup_sst()
+        self.assertEqual(result, False)
+
+        # test backup info file with other 'incremental' string
+        mock_read_data = 'something incremental = N\n'
+        mock_open = mock.mock_open(read_data=mock_read_data)
+        with mock.patch('percona_utils.open', mock_open):
+            result = percona_utils.last_backup_sst()
+        self.assertEqual(result, False)
+
+        # test backup info file with two lines incremental
+        mock_read_data = 'incremental incremental = Y\nincremental = N\n'
+        mock_open = mock.mock_open(read_data=mock_read_data)
+        with mock.patch('percona_utils.open', mock_open):
+            result = percona_utils.last_backup_sst()
+        self.assertEqual(result, True)
+
+        # test non existant backup info file
+        percona_utils.BACKUP_INFO = '/some/non/existant/file'
+        result = percona_utils.last_backup_sst()
+        self.assertEqual(result, False)
+
 
 class UtilsTestsStatus(CharmTestCase):
 
@@ -721,6 +755,26 @@ class UtilsTestsStatus(CharmTestCase):
         self.seeded.return_value = True
         stat, _ = percona_utils.charm_check_func()
         assert stat == 'active'
+
+    @mock.patch.object(percona_utils, 'last_backup_sst')
+    def test_bootstrapped_seeded_missing_sst(self, mock_last_backup_sst):
+        self.is_bootstrapped.return_value = True
+        self.seeded.side_effect = [False, True]
+        self.config.return_value = None
+        percona_utils.SEEDED_MARKER = '/tmp/seeded'
+        mock_last_backup_sst.return_value = True
+        stat, _ = percona_utils.charm_check_func()
+        assert stat == 'active'
+
+    @mock.patch.object(percona_utils, 'last_backup_sst')
+    def test_not_bootstrapped_seeded_missing_sst(self, mock_last_backup_sst):
+        self.is_bootstrapped.return_value = False
+        self.seeded.side_effect = [False, False]
+        self.config.return_value = None
+        percona_utils.SEEDED_MARKER = '/tmp/seeded'
+        mock_last_backup_sst.return_value = True
+        stat, _ = percona_utils.charm_check_func()
+        assert stat == 'waiting'
 
 
 class UtilsTestsCTC(CharmTestCase):
