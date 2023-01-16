@@ -16,4 +16,4 @@
       - osci-lint
       - tox-py36
     vars:
-      tox_extra_args: bionic_model:bionic-ha
+      tox_extra_args: '-- bionic_model:bionic-ha'
