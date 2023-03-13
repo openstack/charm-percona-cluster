@@ -5,10 +5,12 @@ relations:
 applications:
   percona-cluster:
     series: xenial
-    charm: ../../../percona-cluster
+    charm: ../../percona-cluster.charm
     num_units: 1
   keystone:
-    charm: cs:~openstack-charmers/keystone
+    charm: ch:keystone
+    channel: queens/edge
+    series: xenial
     num_units: 1
     options:
       openstack-origin: cloud:xenial-queens
